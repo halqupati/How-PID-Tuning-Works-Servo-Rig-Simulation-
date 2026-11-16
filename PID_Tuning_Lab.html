@@ -1,0 +1,1604 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PID Tuning Lab</title>
+<style>
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --panel2:#eef1f5; --text:#1a1e24; --muted:#5b6470; --border:#d8dde4;
+  --grid:#e7eaef; --axis:#97a0ab; --accent:#2563eb; --ref:#111827; --err:#d97706; --u:#7c3aed;
+  --p:#2563eb; --i:#16a34a; --d:#dc2626; --ghost:#9aa1ab; --good:#15803d; --bad:#b91c1c; --warn:#b45309;
+  --band:rgba(37,99,235,.08); --rhp:rgba(220,38,38,.07); --shadow:0 1px 2px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1217; --panel:#161b22; --panel2:#1d242d; --text:#e5e8ec; --muted:#9aa4b0; --border:#2a323c;
+    --grid:#242c36; --axis:#5c6773; --accent:#60a5fa; --ref:#e5e7eb; --err:#f59e0b; --u:#a78bfa;
+    --p:#60a5fa; --i:#4ade80; --d:#f87171; --ghost:#6b7280; --good:#4ade80; --bad:#f87171; --warn:#fbbf24;
+    --band:rgba(96,165,250,.11); --rhp:rgba(248,113,113,.09); --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1217; --panel:#161b22; --panel2:#1d242d; --text:#e5e8ec; --muted:#9aa4b0; --border:#2a323c;
+  --grid:#242c36; --axis:#5c6773; --accent:#60a5fa; --ref:#e5e7eb; --err:#f59e0b; --u:#a78bfa;
+  --p:#60a5fa; --i:#4ade80; --d:#f87171; --ghost:#6b7280; --good:#4ade80; --bad:#f87171; --warn:#fbbf24;
+  --band:rgba(96,165,250,.11); --rhp:rgba(248,113,113,.09); --shadow:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;padding:16px;}
+h1{font-size:20px;margin:0}
+h2{font-size:15px;margin:0 0 8px}
+h3{font-size:14px;margin:14px 0 6px}
+p{margin:6px 0}
+a{color:var(--accent)}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-bottom:12px}
+header .sub{color:var(--muted);font-size:13px}
+header .spacer{flex:1}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--border);border-radius:7px;padding:6px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.small{padding:3px 8px;font-size:12px}
+select,input[type=number],input[type=text]{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:4px 6px;max-width:100%;min-width:0}
+#plantSel{width:100%}
+.field.col{flex-direction:column;align-items:stretch;gap:4px}
+input[type=number]{width:78px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+nav.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+nav.tabs button{border-radius:999px;padding:6px 14px}
+nav.tabs button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px;box-shadow:var(--shadow)}
+.layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:12px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media (max-width:980px){.layout{grid-template-columns:1fr}.row2{grid-template-columns:1fr}}
+.gain{border-top:1px solid var(--border);padding:8px 0}
+.gain:first-of-type{border-top:none}
+.gain .top{display:flex;align-items:center;gap:6px}
+.gain .name{font-weight:600;min-width:28px}
+.gain .desc{color:var(--muted);font-size:12px;flex:1}
+.gain .ctl{display:flex;align-items:center;gap:6px;margin-top:4px}
+.chip{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
+details{border-top:1px solid var(--border);padding-top:8px;margin-top:8px}
+details summary{cursor:pointer;font-weight:600}
+.field{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0}
+.field label{color:var(--muted)}
+.btnrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+canvas{width:100%;display:block}
+.cv-main{height:320px}.cv-low{height:210px}.cv-pz{height:270px}.cv-quiz{height:300px}.cv-quizlow{height:170px}
+.metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+@media (max-width:1200px){.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:520px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.metric{background:var(--panel2);border-radius:8px;padding:8px}
+.metric .k{color:var(--muted);font-size:12px}
+.metric .v{font-size:18px;font-weight:650;font-variant-numeric:tabular-nums}
+.metric .dl{font-size:12px;min-height:16px;font-variant-numeric:tabular-nums}
+.up-bad,.dn-bad{color:var(--bad)}.up-good,.dn-good{color:var(--good)}.neutral{color:var(--muted)}
+.status{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid currentColor}
+.status.good{color:var(--good)}.status.bad{color:var(--bad)}.status.warn{color:var(--warn)}
+.explain ul{margin:6px 0 0 18px;padding:0}
+.explain li{margin:3px 0}
+.muted{color:var(--muted)}
+table.eff{border-collapse:collapse;width:100%;font-size:13px}
+table.eff th,table.eff td{border:1px solid var(--border);padding:5px 6px;text-align:center}
+table.eff th:first-child,table.eff td:first-child{text-align:left}
+table.eff tr.hl td{background:var(--band);font-weight:600}
+.plothead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.plothead .opts{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.plothead label{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+.pins{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-size:12px}
+.pin{border:1px solid var(--border);border-radius:999px;padding:2px 8px;display:inline-flex;align-items:center;gap:5px}
+.pin button{border:none;background:none;padding:0 2px;cursor:pointer;color:var(--muted)}
+.answers{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin-top:8px}
+@media (max-width:700px){.answers{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.answers button{padding:10px 4px;font-weight:600}
+.answers button.correct{background:var(--good);border-color:var(--good);color:#fff}
+.answers button.wrong{background:var(--bad);border-color:var(--bad);color:#fff}
+.score{font-variant-numeric:tabular-nums}
+.bar{height:12px;background:var(--panel2);border-radius:999px;overflow:hidden;border:1px solid var(--border)}
+.bar>div{height:100%;background:var(--accent);width:0%;transition:width .15s}
+.feedback{margin-top:10px;padding:10px;border-radius:8px;background:var(--panel2)}
+.hidden{display:none!important}
+code,pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+pre{background:var(--panel2);padding:10px;border-radius:8px;overflow:auto;white-space:pre}
+.guide p,.guide li{max-width:80ch}
+.kbd{border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 4px;font-size:12px}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:.95}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>PID Tuning Lab</h1>
+    <div class="sub">Change Kp, Ki and Kd and watch what happens to the closed-loop response.</div>
+  </div>
+  <div class="spacer"></div>
+  <button id="themeBtn" class="small" title="Switch colour theme">Theme: auto</button>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="explore" class="active">Explore</button>
+  <button data-tab="system">System view (servo rig)</button>
+  <button data-tab="quiz">Quiz: identify the change</button>
+  <button data-tab="challenge">Challenge: match the response</button>
+  <button data-tab="guide">Guide</button>
+</nav>
+
+<!-- ============================ EXPLORE ============================ -->
+<section id="tab-explore">
+<div class="layout">
+  <div class="stack">
+    <div class="card">
+      <h2>Plant G(s)</h2>
+      <div class="field col"><label for="plantSel">System</label>
+        <select id="plantSel"></select></div>
+      <div id="plantTf" class="muted" style="font-family:ui-monospace,monospace;font-size:13px"></div>
+      <div id="plantNote" class="muted" style="font-size:12px;margin-top:4px"></div>
+      <div class="muted" style="font-size:12px;margin-top:8px">Quick pick:</div>
+      <div class="btnrow" id="quickPlants" style="margin-top:4px"></div>
+      <div id="customBox" class="hidden">
+        <div class="field"><label>Numerator</label><input type="text" id="cNum" value="4"></div>
+        <div class="field"><label>Denominator</label><input type="text" id="cDen" value="1 4 4"></div>
+        <div class="muted" style="font-size:12px">Coefficients in descending powers of s, e.g. <code>1 4 4</code> = s² + 4s + 4.</div>
+        <div class="btnrow"><button id="cApply" class="small">Apply</button><span id="cMsg" class="muted" style="font-size:12px"></span></div>
+      </div>
+      <div class="field"><label for="delayIn">Dead time (s)</label><input type="number" id="delayIn" min="0" step="0.1" value="0"></div>
+    </div>
+
+    <div class="card">
+      <h2>Controller C(s)</h2>
+      <div id="gainsExplore"></div>
+      <div class="btnrow">
+        <button id="pinBtn" class="small" title="Keep this response on the plot for comparison">Pin response</button>
+        <button id="clearPins" class="small">Clear pins</button>
+        <button id="resetBtn" class="small">Reset</button>
+        <button id="znBtn" class="small" title="Ziegler–Nichols ultimate-gain tuning">Ziegler–Nichols</button>
+        <button id="mBtn" class="small">Copy MATLAB code</button>
+      </div>
+      <div id="znMsg" class="muted" style="font-size:12px;margin-top:6px"></div>
+
+      <details>
+        <summary>Test conditions and options</summary>
+        <div class="field"><label for="refSel">Reference</label>
+          <select id="refSel"><option value="step">Step</option><option value="square">Square wave</option><option value="ramp">Ramp</option></select></div>
+        <div class="field"><label for="ampIn">Reference size</label><input type="number" id="ampIn" step="0.1" value="1"></div>
+        <div class="field"><label for="Tin">Simulation time (s)</label><input type="number" id="Tin" min="0.5" step="0.5" value="6"></div>
+        <div class="field"><label for="distIn">Load disturbance</label><input type="number" id="distIn" step="0.05" value="0"></div>
+        <div class="field"><label for="distT">… applied at t (s)</label><input type="number" id="distT" min="0" step="0.5" value="3"></div>
+        <div class="field"><label for="noiseIn">Sensor noise (% of ref)</label><input type="number" id="noiseIn" min="0" step="0.5" value="0"></div>
+        <div class="field"><label for="Nin">Derivative filter N</label><input type="number" id="Nin" min="1" step="10" value="100"></div>
+        <div class="field"><label for="dmeas">Derivative on measurement</label><input type="checkbox" id="dmeas"></div>
+        <div class="field"><label for="satOn">Actuator limit ±</label><span><input type="checkbox" id="satOn"> <input type="number" id="umaxIn" min="0.1" step="1" value="10"></span></div>
+        <div class="field"><label for="awOn">Anti-windup (clamping)</label><input type="checkbox" id="awOn" checked></div>
+      </details>
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="metrics" id="metrics"></div>
+    </div>
+
+    <div class="card">
+      <div class="plothead">
+        <h2 style="margin:0">Output y(t) and reference r(t)</h2>
+        <div class="opts">
+          <label><input type="checkbox" id="ghostOn" checked> previous response</label>
+          <label><input type="checkbox" id="markOn" checked> markers</label>
+          <label><input type="checkbox" id="autoY" checked> auto-scale</label>
+        </div>
+      </div>
+      <canvas id="cvMain" class="cv-main"></canvas>
+      <div class="pins" id="pinList"></div>
+    </div>
+
+    <div class="row2">
+      <div class="card">
+        <div class="plothead">
+          <h2 style="margin:0" id="lowTitle">Control signal u(t)</h2>
+          <select id="lowSel"><option value="u">Control signal u(t)</option><option value="terms">P, I and D terms</option><option value="e">Error e(t)</option></select>
+        </div>
+        <canvas id="cvLow" class="cv-low"></canvas>
+      </div>
+      <div class="card">
+        <div class="plothead">
+          <h2 style="margin:0">Closed-loop poles and zeros</h2>
+          <div class="opts">
+            <label><input type="checkbox" id="locusOn"> root locus</label>
+            <label><input type="checkbox" id="zoomPz" checked> zoom</label>
+          </div>
+        </div>
+        <canvas id="cvPz" class="cv-pz"></canvas>
+        <div id="pzNote" class="muted" style="font-size:12px"></div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="card explain">
+        <h2>What changed?</h2>
+        <div id="explain" class="muted">Move a slider. The faint dashed curve shows the response before your change, and the arrows on the cards show what got better or worse.</div>
+      </div>
+      <div class="card">
+        <h2>Typical effect of increasing each gain</h2>
+        <table class="eff" id="effTable">
+          <tr><th>Increase</th><th>Rise time</th><th>Overshoot</th><th>Settling</th><th>Steady-state error</th><th>Stability</th></tr>
+          <tr data-k="Kp"><td><span class="chip" style="background:var(--p)"></span>Kp</td><td>↓</td><td>↑</td><td>small change</td><td>↓</td><td>worse</td></tr>
+          <tr data-k="Ki"><td><span class="chip" style="background:var(--i)"></span>Ki</td><td>↓</td><td>↑</td><td>↑</td><td>removed</td><td>worse</td></tr>
+          <tr data-k="Kd"><td><span class="chip" style="background:var(--d)"></span>Kd</td><td>small change</td><td>↓</td><td>↓</td><td>no effect</td><td>better if small</td></tr>
+        </table>
+        <p class="muted" style="font-size:12px">These are rules of thumb. Compare them with the arrows above: your plant may behave differently, and that is worth noticing.</p>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ============================ QUIZ ============================ -->
+<section id="tab-quiz" class="hidden">
+<div class="layout">
+  <div class="stack">
+    <div class="card">
+      <h2>Which gain was changed?</h2>
+      <p>One gain was increased or decreased. The grey curve is <b>before</b>, the coloured curve is <b>after</b>. Decide which gain changed and in which direction.</p>
+      <div class="field"><label for="qPlant">Plant</label><select id="qPlant"></select></div>
+      <div class="field"><label for="qLevel">Difficulty</label>
+        <select id="qLevel"><option value="easy">Easy (big change)</option><option value="hard">Hard (small change)</option></select></div>
+      <div class="field"><label for="qShowU">Show control signal u(t)</label><input type="checkbox" id="qShowU"></div>
+      <div class="field"><label for="qShowM">Show metrics before answering</label><input type="checkbox" id="qShowM"></div>
+      <div class="btnrow"><button id="qNext" class="primary">New question</button><button id="qResetScore" class="small">Reset score</button></div>
+      <p class="score" id="qScore" style="margin-top:10px"></p>
+    </div>
+    <div class="card">
+      <h2>Clues to look for</h2>
+      <ul style="margin:0 0 0 18px;padding:0">
+        <li><b>Kp ↑</b>: faster rise, more overshoot, smaller (but not zero) error.</li>
+        <li><b>Ki ↑</b>: error removed faster, more overshoot and slower oscillation.</li>
+        <li><b>Kd ↑</b>: less overshoot, more damping, big spike in u(t).</li>
+        <li>Look at the <b>final value</b> first: only integral action takes the error to zero.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="stack">
+    <div class="card">
+      <canvas id="cvQuiz" class="cv-quiz"></canvas>
+      <canvas id="cvQuizU" class="cv-quizlow hidden" style="margin-top:8px"></canvas>
+      <div class="answers" id="qAnswers"></div>
+      <div id="qMetrics" class="hidden" style="margin-top:10px"></div>
+      <div id="qFeedback" class="feedback hidden"></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ============================ CHALLENGE ============================ -->
+<section id="tab-challenge" class="hidden">
+<div class="layout">
+  <div class="stack">
+    <div class="card">
+      <h2>Match the target response</h2>
+      <p>The dashed curve was made with hidden PID gains. Tune your controller until your response sits on top of it.</p>
+      <div class="field"><label for="chPlant">Plant</label><select id="chPlant"></select></div>
+      <div id="gainsChallenge"></div>
+      <div class="btnrow"><button id="chNew" class="primary">New target</button><button id="chReveal" class="small">Reveal gains</button></div>
+      <div id="chRevealTxt" class="muted" style="margin-top:8px;font-size:13px"></div>
+    </div>
+  </div>
+  <div class="stack">
+    <div class="card">
+      <div class="plothead"><h2 style="margin:0">Your response vs target</h2><span class="score" id="chScoreTxt"></span></div>
+      <div class="bar"><div id="chBar"></div></div>
+      <canvas id="cvCh" class="cv-main" style="margin-top:8px"></canvas>
+      <div id="chMsg" class="feedback"></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ============================ SYSTEM VIEW ============================ -->
+<section id="tab-system" class="hidden">
+<div class="layout">
+  <div class="stack">
+    <div class="card">
+      <h2>Servo rig</h2>
+      <p class="muted" style="font-size:13px;margin-top:0">A DC motor turns an arm through a 32:1 gearbox. An optical encoder on the motor shaft measures the angle. A microcontroller runs the PID loop and drives the motor through an H-bridge from a 12 V supply. Change a gain and the rig replays the move.</p>
+      <div id="sysPlantHint" class="feedback hidden" style="font-size:13px"></div>
+      <div class="field"><label for="sysSet">Setpoint angle (°)</label><input type="number" id="sysSet" value="90" step="5" min="5" max="170"></div>
+      <div id="gainsSystem"></div>
+      <div class="btnrow">
+        <button id="sysPlay" class="primary small">Pause</button>
+        <button id="sysReplay" class="small">Replay</button>
+        <select id="sysSpeed" title="Playback speed"><option value="0.25">0.25× slow motion</option><option value="0.5">0.5×</option><option value="1" selected>1× real time</option><option value="2">2×</option></select>
+      </div>
+      <input type="range" id="sysScrub" min="0" max="1000" value="0" style="margin-top:8px" title="Drag to move through time">
+      <div class="btnrow">
+        <button id="sysLoad" class="small" title="Hang a load on the arm at the current time">Add load on arm</button>
+        <button id="sysLimit" class="small" title="Limit the motor voltage to the 12 V supply">Use real ±12 V limit</button>
+        <button id="sysNoise" class="small" title="Add 1 % noise to the encoder reading">Add encoder noise</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>What to watch</h2>
+      <ul style="margin:0 0 0 18px;padding:0;font-size:13px">
+        <li><b>Kp only</b>: the arm stops short of the dashed setpoint (orange wedge = error) or swings past it.</li>
+        <li><b>Add Kd</b>: the D bar in the microcontroller brakes the arm as it approaches, so it stops swinging.</li>
+        <li><b>Add Ki</b>: the I value grows slowly and pushes the arm the last few degrees onto the setpoint.</li>
+        <li><b>Add load</b> with P only: the arm sags and stays down. With Ki it climbs back.</li>
+        <li><b>±12 V limit</b>: big gains ask for more voltage than the supply has; PWM sticks at 100 % and the move is slower than the plot without the limit.</li>
+        <li><b>Encoder noise</b> with large Kd: the PWM duty and motor voltage chatter.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="stack">
+    <div class="card"><canvas id="cvSys"></canvas></div>
+    <div class="card"><div class="metrics" id="sysMetrics"></div></div>
+  </div>
+</div>
+</section>
+
+<!-- ============================ GUIDE ============================ -->
+<section id="tab-guide" class="hidden">
+<div class="card guide">
+  <h2>The PID controller</h2>
+  <p>The controller works on the error e(t) = r(t) − y(t):</p>
+  <pre>u(t) = Kp·e(t) + Ki·∫e(t)dt + Kd·de(t)/dt          C(s) = Kp + Ki/s + Kd·N·s/(s + N)</pre>
+  <p>The derivative is filtered (N is the filter bandwidth in rad/s) because a pure derivative would amplify noise without limit. Every real PID controller does this.</p>
+  <ul>
+    <li><b>Proportional, Kp</b>: reacts to the present error. More Kp gives a faster, more accurate response but less damping. On its own it leaves a steady-state error unless the plant contains an integrator.</li>
+    <li><b>Integral, Ki</b> (lag compensator): adds up past error, so it keeps pushing until the error is zero. Too much Ki over-integrates: overshoot, slow oscillation and finally instability.</li>
+    <li><b>Derivative, Kd</b> (lead compensator): reacts to how fast the error changes, which adds damping and reduces overshoot. Too much Kd amplifies noise and produces large spikes in the control signal.</li>
+  </ul>
+
+  <h3>Tuning procedure (follow it in order)</h3>
+  <ol>
+    <li><b>Proportional test (Rule 1).</b> Set Ki = Kd = 0 and increase Kp in steps. If the output overshoots above the demand and the error falls, the system is a <b>lead</b> system and needs derivative action. If the error hardly changes and the output stays below the demand, it is a <b>lag</b> system and needs integral action. If you see both, it is <b>lead-lag</b> and needs both.</li>
+    <li><b>Choose Kp (Rule 3)</b>: the value that gives a reasonable response without a large overshoot.</li>
+    <li><b>Add derivative</b> in small steps to damp the oscillation, keeping Ki = 0.</li>
+    <li><b>Add integral</b> in small steps to remove the steady-state error. Stop before the overshoot comes back (Rule 4).</li>
+    <li>Check the result with a disturbance and with sensor noise, and look at the control signal: a real actuator cannot deliver huge spikes.</li>
+  </ol>
+
+  <h3>Reading a step response</h3>
+  <table class="eff" style="max-width:760px">
+    <tr><th>What you see</th><th>Likely cause</th><th>Try</th></tr>
+    <tr><td>Output settles below the reference</td><td>Steady-state error, no integral action</td><td>Increase Ki (or Kp)</td></tr>
+    <tr><td>Large overshoot, fast ringing</td><td>Too much Kp, not enough damping</td><td>Increase Kd or reduce Kp</td></tr>
+    <tr><td>Overshoot with slow, rolling oscillation</td><td>Too much Ki (over-integration)</td><td>Reduce Ki</td></tr>
+    <tr><td>Slow creep up to the reference</td><td>Ki too small</td><td>Increase Ki a little</td></tr>
+    <tr><td>Very sluggish, no overshoot</td><td>Gains too low or too much Kd</td><td>Increase Kp</td></tr>
+    <tr><td>Oscillation that grows</td><td>Unstable: poles in the right half-plane</td><td>Reduce the gain you increased last</td></tr>
+    <tr><td>Noisy, chattering control signal</td><td>Kd amplifying sensor noise</td><td>Reduce Kd or N</td></tr>
+  </table>
+
+  <h3>Useful ideas</h3>
+  <ul>
+    <li><b>Pole location tells the story.</b> Poles further left decay faster; poles further from the real axis oscillate faster; any pole on the right means instability. Watch the pole map while you drag a slider.</li>
+    <li><b>Derivative kick.</b> With the derivative acting on the error, a step in the reference makes a huge spike in u(t). Switching to <i>derivative on measurement</i> removes it without changing the poles.</li>
+    <li><b>Integrator windup.</b> If the actuator saturates, the integral keeps growing and causes big overshoot. Anti-windup (clamping) stops the integrator while the output is saturated.</li>
+    <li><b>Ziegler–Nichols.</b> Find the ultimate gain Ku (P-only gain at which the loop just oscillates) and the period Tu, then use Kp = 0.6Ku, Ki = 1.2Ku/Tu, Kd = 0.075KuTu. It gives an aggressive starting point, not a final answer.</li>
+    <li><b>Pole-zero cancellation.</b> For the lab plant 4/(s + 2)², the gains Kp = 8, Ki = 8, Kd = 2 make the controller zeros sit on the plant poles, so the loop becomes 8/s and the response is first order with no overshoot.</li>
+  </ul>
+  <h3>Keyboard</h3>
+  <p class="muted">Click a slider, then use the arrow keys for fine steps. Type an exact value in the number box.</p>
+</div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/*CORE-START*/
+const Core = (() => {
+  function trim(p){
+    const m = Math.max(1e-300, ...p.map(Math.abs));
+    let i = 0;
+    while (i < p.length - 1 && Math.abs(p[i]) <= 1e-13 * m) i++;
+    return p.slice(i);
+  }
+  function mul(a, b){
+    const r = new Array(a.length + b.length - 1).fill(0);
+    for (let i = 0; i < a.length; i++) for (let j = 0; j < b.length; j++) r[i + j] += a[i] * b[j];
+    return r;
+  }
+  function add(a, b){
+    const n = Math.max(a.length, b.length), r = new Array(n).fill(0);
+    for (let i = 0; i < a.length; i++) r[n - a.length + i] += a[i];
+    for (let i = 0; i < b.length; i++) r[n - b.length + i] += b[i];
+    return r;
+  }
+  function evalAt(p, x){ let v = 0; for (const c of p) v = v * x + c; return v; }
+  function isZeroPoly(p){ return p.every(c => Math.abs(c) < 1e-300); }
+
+  // Polynomial roots (Durand-Kerner + Newton polish). p in descending powers.
+  function roots(p0){
+    let p = trim(p0.slice());
+    const out = [];
+    if (isZeroPoly(p)) return out;
+    let m = Math.max(...p.map(Math.abs));
+    while (p.length > 1 && Math.abs(p[p.length - 1]) <= 1e-14 * m){ p.pop(); out.push({re:0, im:0}); }
+    const n = p.length - 1;
+    if (n < 1) return out;
+    const a = p.map(c => c / p[0]);
+    if (n === 1){ out.push({re:-a[1], im:0}); return out; }
+    if (n === 2){
+      const b = a[1], c = a[2], disc = b*b - 4*c;
+      if (disc >= 0){ const s = Math.sqrt(disc); out.push({re:(-b + s)/2, im:0}, {re:(-b - s)/2, im:0}); }
+      else { const s = Math.sqrt(-disc); out.push({re:-b/2, im:s/2}, {re:-b/2, im:-s/2}); }
+      return out;
+    }
+    const R = 1 + Math.max(...a.slice(1).map(Math.abs));
+    const zr = new Float64Array(n), zi = new Float64Array(n);
+    for (let k = 0; k < n; k++){ const ang = 2*Math.PI*k/n + 0.4; zr[k] = R*Math.cos(ang); zi[k] = R*Math.sin(ang); }
+    for (let it = 0; it < 3000; it++){
+      let maxd = 0;
+      for (let i = 0; i < n; i++){
+        let fr = 1, fi = 0;
+        for (let k = 1; k <= n; k++){ const tr = fr*zr[i] - fi*zi[i] + a[k]; fi = fr*zi[i] + fi*zr[i]; fr = tr; }
+        let dr = 1, di = 0;
+        for (let j = 0; j < n; j++){ if (j === i) continue;
+          const xr = zr[i] - zr[j], xi = zi[i] - zi[j];
+          const tr = dr*xr - di*xi; di = dr*xi + di*xr; dr = tr; }
+        const den = dr*dr + di*di || 1e-300;
+        const qr = (fr*dr + fi*di)/den, qi = (fi*dr - fr*di)/den;
+        zr[i] -= qr; zi[i] -= qi;
+        const mag = Math.hypot(qr, qi)/(1 + Math.hypot(zr[i], zi[i]));
+        if (mag > maxd) maxd = mag;
+      }
+      if (maxd < 1e-15) break;
+    }
+    for (let i = 0; i < n; i++){
+      for (let pass = 0; pass < 4; pass++){
+        let fr = 1, fi = 0, gr = 0, gi = 0;
+        for (let k = 1; k <= n; k++){
+          const tgr = gr*zr[i] - gi*zi[i] + fr; gi = gr*zi[i] + gi*zr[i] + fi; gr = tgr;
+          const tfr = fr*zr[i] - fi*zi[i] + a[k]; fi = fr*zi[i] + fi*zr[i]; fr = tfr;
+        }
+        const den = gr*gr + gi*gi; if (den < 1e-300) break;
+        const qr = (fr*gr + fi*gi)/den, qi = (fi*gr - fr*gi)/den;
+        if (!isFinite(qr) || !isFinite(qi)) break;
+        zr[i] -= qr; zi[i] -= qi;
+      }
+      let im = zi[i];
+      if (Math.abs(im) < 1e-7*(1 + Math.abs(zr[i]))) im = 0;
+      out.push({re:zr[i], im});
+    }
+    return out;
+  }
+
+  function ctrlPolys(g){
+    const Kp = g.useP ? g.Kp : 0, Ki = g.useI ? g.Ki : 0, Kd = g.useD ? g.Kd : 0, N = g.N;
+    const hasI = Ki !== 0, hasD = Kd !== 0;
+    if (!hasI && !hasD) return {num:[Kp], den:[1], numR:[Kp]};
+    if (!hasI) return {num:[Kp + Kd*N, Kp*N], den:[1, N], numR:[Kp, Kp*N]};
+    if (!hasD) return {num:[Kp, Ki], den:[1, 0], numR:[Kp, Ki]};
+    return {num:[Kp + Kd*N, Kp*N + Ki, Ki*N], den:[1, N, 0], numR:[Kp, Kp*N + Ki, Ki*N]};
+  }
+  function plantPolys(plant){
+    let pn = plant.num.slice(), pd = plant.den.slice();
+    if (plant.delay > 0){ pn = mul(pn, [-plant.delay/2, 1]); pd = mul(pd, [plant.delay/2, 1]); }
+    return {pn, pd};
+  }
+  function stableOf(poles){
+    let maxRe = -Infinity; for (const p of poles) if (p.re > maxRe) maxRe = p.re;
+    return maxRe;
+  }
+  function analyze(plant, g, derivMeas){
+    const {pn, pd} = plantPolys(plant);
+    const c = ctrlPolys(g);
+    const Ln = mul(c.num, pn), Ld = mul(c.den, pd);
+    const ch = trim(add(Ld, Ln));
+    const poles = roots(ch);
+    const zn = mul(derivMeas ? c.numR : c.num, pn);
+    const zeros = isZeroPoly(zn) ? [] : roots(zn);
+    const maxRe = stableOf(poles);
+    const scaleRe = Math.max(1e-6, ...poles.map(p => Math.hypot(p.re, p.im))) * 1e-7;
+    const stable = maxRe < -scaleRe;
+    const marginal = !stable && maxRe <= Math.max(1e-6, scaleRe * 10);
+    const ch0 = evalAt(ch, 0), ln0 = evalAt(Ln, 0);
+    const dc = Math.abs(ch0) > 1e-14 ? ln0 / ch0 : NaN;
+    let dom = null;
+    if (stable && poles.length){
+      for (const p of poles) if (!dom || p.re > dom.re + 1e-9 || (Math.abs(p.re - dom.re) <= 1e-9 && p.im > dom.im)) dom = p;
+    }
+    return {poles, zeros, ch, Ln, Ld, stable, marginal, maxRe, dc, dom};
+  }
+  // smallest k > 1 (scaling all controller gains) that makes the loop unstable
+  function gainMargin(an){
+    if (!an.stable) return null;
+    const unstable = k => stableOf(roots(add(an.Ld, an.Ln.map(v => v*k)))) > 0;
+    let lo = 1, hi = null;
+    for (let e = 0.02; e <= 4; e += 0.02){ const k = Math.pow(10, e); if (unstable(k)){ hi = k; break; } lo = k; }
+    if (hi === null) return Infinity;
+    for (let i = 0; i < 40; i++){ const m = Math.sqrt(lo*hi); if (unstable(m)) hi = m; else lo = m; }
+    return hi;
+  }
+  function locus(an){
+    const pts = [];
+    for (let e = -3; e <= 3.0001; e += 0.025){
+      const k = Math.pow(10, e);
+      for (const r of roots(add(an.Ld, an.Ln.map(v => v*k)))) pts.push(r);
+    }
+    return pts;
+  }
+  // Ziegler-Nichols ultimate gain with P-only control
+  function ultimate(plant){
+    const {pn, pd} = plantPolys(plant);
+    const maxReAt = k => stableOf(roots(trim(add(pd, pn.map(v => v*k)))));
+    if (!(maxReAt(1e-3) < 0)) return {ok:false, why:'P-only control cannot stabilise this plant, so there is no ultimate gain.'};
+    let lo = 1e-3, hi = null;
+    for (let e = -3; e <= 5; e += 0.02){ const k = Math.pow(10, e); if (maxReAt(k) > 0){ hi = k; break; } lo = k; }
+    if (hi === null) return {ok:false, why:'This plant never becomes unstable under P-only control, so there is no ultimate gain. Ziegler–Nichols does not apply.'};
+    for (let i = 0; i < 50; i++){ const m = Math.sqrt(lo*hi); if (maxReAt(m) > 0) hi = m; else lo = m; }
+    const r = roots(trim(add(pd, pn.map(v => v*hi))));
+    let best = null; for (const p of r) if (!best || p.re > best.re) best = p;
+    if (!best || Math.abs(best.im) < 1e-6) return {ok:false, why:'The loop goes unstable through a real pole, so there is no oscillation period for Ziegler–Nichols.'};
+    return {ok:true, Ku:hi, Tu:2*Math.PI/Math.abs(best.im)};
+  }
+
+  function mulberry32(seed){ return function(){ seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+  // Time simulation. opt: {T, ref, amp, period, distAmp, distT, noise, satOn, umax, aw, derivMeas, seed}
+  function simulate(plant, g, opt){
+    let den = trim(plant.den.slice()); const lead = den[0];
+    den = den.map(v => v/lead);
+    let num = plant.num.map(v => v/lead);
+    const n = den.length - 1;
+    if (num.length > den.length) throw new Error('improper plant');
+    const b = new Array(n + 1 - num.length).fill(0).concat(num);
+    const Dp = b[0];
+    const Cp = new Float64Array(n);
+    for (let i = 1; i <= n; i++) Cp[i - 1] = b[i] - den[i]*Dp;
+    const A1 = new Float64Array(n); for (let i = 1; i <= n; i++) A1[i - 1] = -den[i];
+    const pp = n > 0 ? roots(den) : [];
+    const fastPlant = Math.max(1, ...pp.map(p => Math.hypot(p.re, p.im)));
+    const Kp = g.useP ? g.Kp : 0, Ki = g.useI ? g.Ki : 0, Kd = g.useD ? g.Kd : 0, N = g.N;
+    const fast = Math.max(fastPlant, Kd !== 0 ? N : 1);
+    const T = opt.T;
+    let dt = Math.min(T/3000, 0.15/fast);
+    dt = Math.max(dt, T/150000);
+    const steps = Math.ceil(T/dt) + 1;
+    const t = new Float64Array(steps), r = new Float64Array(steps), y = new Float64Array(steps), e = new Float64Array(steps),
+          u = new Float64Array(steps), P = new Float64Array(steps), I = new Float64Array(steps), D = new Float64Array(steps);
+    const x = new Float64Array(n), k1 = new Float64Array(n), k2 = new Float64Array(n), k3 = new Float64Array(n), k4 = new Float64Array(n), xt = new Float64Array(n);
+    const f = (xs, uin, out) => {
+      if (n === 0) return;
+      let s = uin; for (let i = 0; i < n; i++) s += A1[i]*xs[i];
+      out[0] = s; for (let i = 1; i < n; i++) out[i] = xs[i - 1];
+    };
+    const rnd = mulberry32(opt.seed || 12345);
+    const gauss = () => { let u1 = rnd(); if (u1 < 1e-12) u1 = 1e-12; return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*rnd()); };
+    const sigma = (opt.noise || 0)/100*Math.max(1e-9, Math.abs(opt.amp));
+    const Ld = plant.delay > 0 ? Math.max(1, Math.round(plant.delay/dt)) : 0;
+    const buf = Ld ? new Float64Array(Ld) : null; let bi = 0;
+    const alpha = 1 - Math.exp(-N*dt);
+    let integ = 0, z = 0, uinPrev = 0, diverged = false, last = steps;
+    const limit = 1e4*Math.max(1, Math.abs(opt.amp));
+    for (let k = 0; k < steps; k++){
+      const tk = k*dt; t[k] = tk;
+      let rk;
+      if (opt.ref === 'ramp') rk = opt.amp*tk;
+      else if (opt.ref === 'square') rk = (Math.floor(tk/(opt.period/2)) % 2 === 0) ? opt.amp : 0;
+      else rk = opt.amp;
+      let yk = Dp*uinPrev; for (let i = 0; i < n; i++) yk += Cp[i]*x[i];
+      if (!isFinite(yk) || Math.abs(yk) > limit){ diverged = true; last = k; break; }
+      const ym = sigma > 0 ? yk + sigma*gauss() : yk;
+      const ek = rk - ym;
+      const pk = Kp*ek;
+      const sig = opt.derivMeas ? -ym : ek;
+      const dk = Kd !== 0 ? Kd*N*(sig - z) : 0;
+      z += alpha*(sig - z);
+      const uraw = pk + integ + dk;
+      let uk = uraw;
+      if (opt.satOn){ const L = Math.abs(opt.umax); if (uk > L) uk = L; else if (uk < -L) uk = -L; }
+      r[k] = rk; y[k] = yk; e[k] = rk - yk; u[k] = uk; P[k] = pk; I[k] = integ; D[k] = dk;
+      // integrator (with clamping anti-windup)
+      if (Ki !== 0){
+        const sat = opt.satOn && uk !== uraw;
+        if (!(sat && opt.aw && Math.sign(ek) === Math.sign(uraw - uk))) integ += Ki*ek*dt;
+      }
+      let uin = uk;
+      if (Ld){ uin = buf[bi]; buf[bi] = uk; bi = (bi + 1) % Ld; }
+      const dist = (opt.distAmp && tk >= opt.distT) ? opt.distAmp : 0;
+      const ui = uin + dist;
+      uinPrev = ui;
+      if (n > 0){
+        f(x, ui, k1);
+        for (let i = 0; i < n; i++) xt[i] = x[i] + 0.5*dt*k1[i]; f(xt, ui, k2);
+        for (let i = 0; i < n; i++) xt[i] = x[i] + 0.5*dt*k2[i]; f(xt, ui, k3);
+        for (let i = 0; i < n; i++) xt[i] = x[i] + dt*k3[i];     f(xt, ui, k4);
+        for (let i = 0; i < n; i++) x[i] += dt/6*(k1[i] + 2*k2[i] + 2*k3[i] + k4[i]);
+      }
+    }
+    if (diverged){ for (let k = last; k < steps; k++){ t[k] = k*dt; y[k] = NaN; e[k] = NaN; u[k] = NaN; P[k] = NaN; I[k] = NaN; D[k] = NaN; r[k] = NaN; } }
+    return {t, r, y, e, u, P, I, D, n:steps, dt, diverged};
+  }
+
+  function stepMetrics(sim, an, amp){
+    const {t, y, u, n, dt} = sim;
+    const m = {os:NaN, tr:NaN, ts:NaN, tp:NaN, ess:NaN, upeak:NaN, iae:NaN, yss:NaN, notSettled:false};
+    let up = 0, iae = 0;
+    for (let i = 0; i < n; i++){ if (isFinite(u[i]) && Math.abs(u[i]) > up) up = Math.abs(u[i]); if (isFinite(y[i])) iae += Math.abs(amp - y[i])*dt; }
+    m.upeak = sim.diverged ? NaN : up;
+    m.iae = sim.diverged ? NaN : iae;
+    if (!an.stable || !isFinite(an.dc)) return m;
+    const yss = an.dc*amp; m.yss = yss; m.ess = amp - yss;
+    if (Math.abs(yss) < 1e-9) return m;
+    const sg = Math.sign(yss);
+    let pk = -Infinity, tpk = 0;
+    for (let i = 0; i < n; i++){ const v = sg*y[i]; if (v > pk){ pk = v; tpk = t[i]; } }
+    const ya = Math.abs(yss);
+    m.os = Math.max(0, (pk - ya)/ya*100);
+    m.tp = m.os > 0.1 ? tpk : NaN;
+    let t10 = NaN, t90 = NaN;
+    for (let i = 0; i < n; i++){ const v = sg*y[i]; if (isNaN(t10) && v >= 0.1*ya) t10 = t[i]; if (v >= 0.9*ya){ t90 = t[i]; break; } }
+    m.tr = t90 - t10;
+    let idx = -1;
+    for (let i = n - 1; i >= 0; i--){ if (Math.abs(y[i] - yss) > 0.02*ya){ idx = i; break; } }
+    if (idx === n - 1){ m.ts = NaN; m.notSettled = true; }
+    else m.ts = idx < 0 ? 0 : t[idx + 1];
+    return m;
+  }
+
+  return {trim, mul, add, evalAt, roots, ctrlPolys, plantPolys, analyze, gainMargin, locus, ultimate, simulate, stepMetrics};
+})();
+/*CORE-END*/
+
+/* ============================ UI ============================ */
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const PIN_COLORS = ['#0891b2', '#c026d3', '#65a30d', '#ea580c', '#4f46e5', '#be123c'];
+
+const PLANTS = {
+  lab:      {name:'Lab plant 4/(s+2)²  (Labs 1–3)', num:[4], den:[1, 4, 4], delay:0, T:6, start:{Kp:1, Ki:0, Kd:0}, base:{Kp:8, Ki:8, Kd:2},
+             note:'The system used in your Open Loop, Closed Loop and PID labs. Critically damped with no integrator, so P control alone always leaves an error. Kp = 8, Ki = 8, Kd = 2 cancels the plant poles.'},
+  servoSpd: {name:'DC servo – speed control  2/(0.5s+1)', num:[2], den:[0.5, 1], delay:0, T:5, start:{Kp:1, Ki:0, Kd:0}, base:{Kp:2, Ki:4, Kd:0},
+             note:'Motor speed (rpm per volt). First order with time constant 0.5 s. The classic PI application: P gives a speed droop, I removes it.'},
+  servoPos: {name:'DC servo – position control  2/(s(0.5s+1))', num:[2], den:[0.5, 1, 0], delay:0, T:6, start:{Kp:1, Ki:0, Kd:0}, base:{Kp:3, Ki:0, Kd:0.6},
+             note:'Position = integral of speed, so the plant has its own integrator: P control already gives zero step error, but it oscillates. PD is the usual answer (DS153 / ES151 servo rigs).'},
+  heater:   {name:'Fan heater – temperature  1.5/(20s+1)', num:[1.5], den:[20, 1], delay:0, T:120, start:{Kp:1, Ki:0, Kd:0}, base:{Kp:3, Ki:0.3, Kd:0},
+             note:'Slow thermal process (°C per % heater power, 20 s time constant). Very forgiving: large gains are fine and D is rarely needed. Watch the time axis: seconds become minutes.'},
+  tank:     {name:'Water tank – level  0.5/(30s+1)', num:[0.5], den:[30, 1], delay:0, T:200, start:{Kp:2, Ki:0, Kd:0}, base:{Kp:6, Ki:0.4, Kd:0},
+             note:'Level in cm per % pump signal. Slow first-order lag: P leaves a big offset, I is essential (single tank rig).'},
+  under:    {name:'Flexible arm / RLC – lightly damped  10/(s²+2s+10)', num:[10], den:[1, 2, 10], delay:0, T:8, start:{Kp:1, Ki:0, Kd:0}, base:{Kp:1, Ki:2, Kd:0.1},
+             note:'A resonant plant (ζ = 0.32) that rings on its own, like a flexible arm or a series RLC circuit. Derivative action supplies the missing damping.'},
+  ballbeam: {name:'Ball on beam – unstable  1/(s²−1)', num:[1], den:[1, 0, -1], delay:0, T:8, start:{Kp:2, Ki:0, Kd:1}, base:{Kp:5, Ki:2, Kd:2},
+             note:'Open-loop unstable (pole at +1): the ball rolls off without control. Needs derivative action to be stabilised at all. Try Kd = 0 and see.'},
+  pelt:     {name:'Peltier / oven with dead time  e^(−2s)/(10s+1)', num:[1], den:[10, 1], delay:2, T:80, start:{Kp:1, Ki:0, Kd:0}, base:{Kp:2, Ki:0.15, Kd:0.5},
+             note:'Temperature with a 2 s transport delay before the sensor reacts. Dead time limits how high the gains can go before the loop oscillates.'},
+  flow:     {name:'Process flow control – fast, noisy  1/(2s+1)', num:[1], den:[2, 1], delay:0.3, T:15, start:{Kp:1, Ki:0, Kd:0}, base:{Kp:1, Ki:1, Kd:0},
+             note:'Flow loops are fast and noisy (PCU rig). Switch on 2 % sensor noise in the options and see why D is almost never used in flow control.'},
+  third:    {name:'Three-stage process  1/(s+1)³', num:[1], den:[1, 3, 3, 1], delay:0, T:20, start:{Kp:1, Ki:0, Kd:0}, base:{Kp:2, Ki:0.8, Kd:1.5},
+             note:'Three lags in series, like a multi-stage heat exchanger. Goes unstable at Kp = 8, so it is the textbook case for Ziegler–Nichols tuning.'},
+  custom:   {name:'Custom transfer function…', num:[4], den:[1, 4, 4], delay:0, T:6, start:{Kp:1, Ki:0, Kd:0}, base:{Kp:2, Ki:1, Kd:0.5}, note:''},
+};
+const MAX = {Kp:200, Ki:500, Kd:50};
+
+const S = {
+  plantKey:'lab', plant:null,
+  g:{Kp:1, Ki:0, Kd:0, N:100, useP:true, useI:true, useD:true},
+  opt:{T:6, ref:'step', amp:1, period:6, distAmp:0, distT:3, noise:0, satOn:false, umax:10, aw:true, derivMeas:false, seed:7},
+  cur:null, before:null, interacting:false, changed:null, pins:[], trail:[], lastChangeTime:0,
+};
+
+/* ---------- formatting ---------- */
+function fmt(v, d = 3){
+  if (v === Infinity) return '∞';
+  if (!isFinite(v)) return '–';
+  if (v === 0) return '0';
+  const a = Math.abs(v);
+  if (a >= 1000 || a < 1e-3) return v.toExponential(2);
+  return Number(v.toPrecision(d)).toString();
+}
+function nice3(v){ return v === 0 ? 0 : Number(v.toPrecision(3)); }
+function polyStr(p){
+  p = Core.trim(p); const n = p.length - 1; const parts = [];
+  p.forEach((c, i) => { const pw = n - i; if (Math.abs(c) < 1e-12) return;
+    const sign = c < 0 ? '−' : '+'; const a = Math.abs(c);
+    let coef = (a === 1 && pw > 0) ? '' : fmt(a, 4);
+    const term = pw === 0 ? fmt(a, 4) : coef + (pw === 1 ? 's' : 's' + (pw === 2 ? '²' : pw === 3 ? '³' : pw === 4 ? '⁴' : '^' + pw));
+    parts.push({sign, term}); });
+  if (!parts.length) return '0';
+  return parts.map((q, i) => i === 0 ? (q.sign === '−' ? '−' : '') + q.term : ' ' + q.sign + ' ' + q.term).join('');
+}
+function toast(msg){ const el = $('toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 1800); }
+
+/* ---------- log slider mapping ---------- */
+function toSlider(v, max){ if (v <= 0) return 0; const hi = Math.log10(max), lo = hi - 4; return Math.max(1, Math.min(1000, Math.round(1000*(Math.log10(v) - lo)/(hi - lo)))); }
+function fromSlider(p, max){ if (p <= 0) return 0; const hi = Math.log10(max), lo = hi - 4; return nice3(Math.pow(10, lo + (p/1000)*(hi - lo))); }
+
+/* ---------- gain control component ---------- */
+function GainControls(container, g, opts){
+  const defs = [
+    {k:'Kp', use:'useP', color:'--p', desc:'proportional: acts on present error'},
+    {k:'Ki', use:'useI', color:'--i', desc:'integral: removes steady-state error'},
+    {k:'Kd', use:'useD', color:'--d', desc:'derivative: adds damping'},
+  ];
+  const els = {};
+  container.innerHTML = '';
+  for (const d of defs){
+    const w = document.createElement('div'); w.className = 'gain';
+    w.innerHTML = `<div class="top">${opts.toggles ? `<input type="checkbox" title="Switch this term on/off" checked>` : ''}
+      <span class="name"><span class="chip" style="background:var(${d.color})"></span>${d.k}</span><span class="desc">${d.desc}</span></div>
+      <div class="ctl"><button class="small" title="Decrease 10%">−</button><input type="range" min="0" max="1000" step="1">
+      <button class="small" title="Increase 10%">+</button><input type="number" min="0" step="any"></div>`;
+    container.appendChild(w);
+    const [minus, range, plus, numb] = [w.querySelector('button'), w.querySelector('input[type=range]'), w.querySelectorAll('button')[1], w.querySelector('input[type=number]')];
+    const chk = opts.toggles ? w.querySelector('input[type=checkbox]') : null;
+    els[d.k] = {range, numb, chk};
+    const setVal = (v, commit) => {
+      v = Math.max(0, v);
+      opts.onInput(d.k, v);
+      if (commit) opts.onChange && opts.onChange(d.k);
+    };
+    range.addEventListener('input', () => setVal(fromSlider(+range.value, MAX[d.k]), false));
+    range.addEventListener('change', () => opts.onChange && opts.onChange(d.k));
+    numb.addEventListener('input', () => { const v = parseFloat(numb.value); if (isFinite(v)) setVal(v, false); });
+    numb.addEventListener('change', () => opts.onChange && opts.onChange(d.k));
+    minus.addEventListener('click', () => { const v = g[d.k]; setVal(v > 0 ? nice3(v*0.9) : 0, true); });
+    plus.addEventListener('click', () => { const v = g[d.k]; setVal(v > 0 ? nice3(v*1.1) : nice3(MAX[d.k]*1e-3), true); });
+    if (chk) chk.addEventListener('change', () => { opts.onToggle(d.use, chk.checked, d.k); });
+  }
+  function refresh(){
+    for (const d of defs){
+      const e = els[d.k];
+      if (document.activeElement !== e.numb) e.numb.value = g[d.k];
+      if (g[d.k] > MAX[d.k]) MAX[d.k] = Math.pow(10, Math.ceil(Math.log10(g[d.k])));
+      e.range.value = toSlider(g[d.k], MAX[d.k]);
+      if (e.chk) e.chk.checked = g[d.use];
+      e.range.disabled = e.chk ? !g[d.use] : false;
+    }
+  }
+  refresh();
+  return {refresh};
+}
+
+/* ---------- plotting ---------- */
+function niceTicks(min, max, count = 6){
+  if (!isFinite(min) || !isFinite(max) || min === max){ return [min]; }
+  const span = max - min, raw = span/count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const r = raw/mag, step = (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10)*mag;
+  const ticks = []; for (let v = Math.ceil(min/step)*step; v <= max + step*1e-9; v += step) ticks.push(Math.abs(v) < step*1e-9 ? 0 : v);
+  return ticks;
+}
+function decimate(x, y, maxPts = 1400){
+  const n = x.length; if (n <= maxPts) return {x:Array.from(x), y:Array.from(y)};
+  const stride = n/maxPts, xs = [], ys = [];
+  for (let i = 0; i < maxPts; i++){ const j = Math.floor(i*stride); xs.push(x[j]); ys.push(y[j]); }
+  xs.push(x[n - 1]); ys.push(y[n - 1]);
+  return {x:xs, y:ys};
+}
+function TimePlot(canvas){
+  const ctx = canvas.getContext('2d');
+  let spec = null, hoverX = null, geo = null;
+  function render(){
+    if (!spec) return;
+    const rect = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const W = Math.max(50, rect.width), H = Math.max(50, rect.height);
+    canvas.width = Math.round(W*dpr); canvas.height = Math.round(H*dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const L = 54, R = 12, T = 10, B = 34, pw = W - L - R, ph = H - T - B;
+    const xmin = spec.xmin, xmax = spec.xmax;
+    let ymin = spec.ymin, ymax = spec.ymax;
+    if (ymin === undefined || ymax === undefined){
+      ymin = Infinity; ymax = -Infinity;
+      for (const s of spec.series){ if (s.noScale) continue; for (let i = 0; i < s.y.length; i++){ const v = s.y[i]; if (isFinite(v)){ if (v < ymin) ymin = v; if (v > ymax) ymax = v; } } }
+      if (!isFinite(ymin)){ ymin = -1; ymax = 1; }
+      if (spec.includeZero){ ymin = Math.min(ymin, 0); ymax = Math.max(ymax, 0); }
+      const pad = (ymax - ymin)*0.08 || Math.max(0.1, Math.abs(ymax)*0.1);
+      ymin -= pad; ymax += pad;
+    }
+    const X = v => L + (v - xmin)/(xmax - xmin)*pw, Y = v => T + (1 - (v - ymin)/(ymax - ymin))*ph;
+    geo = {L, R, T, B, pw, ph, xmin, xmax, ymin, ymax, X, Y, W, H};
+    const cGrid = css('--grid'), cAxis = css('--axis'), cText = css('--muted'), cPanel = css('--panel');
+    ctx.font = '11px system-ui, sans-serif'; ctx.lineWidth = 1;
+    // bands
+    for (const b of (spec.bands || [])){ ctx.fillStyle = b.color; const y0 = Y(Math.min(b.y1, ymax)), y1 = Y(Math.max(b.y0, ymin)); if (y1 > y0) ctx.fillRect(L, y0, pw, y1 - y0); }
+    // grid
+    ctx.strokeStyle = cGrid; ctx.fillStyle = cText; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (const v of niceTicks(ymin, ymax, Math.max(3, Math.round(ph/45)))){ const yy = Math.round(Y(v)) + 0.5; ctx.beginPath(); ctx.moveTo(L, yy); ctx.lineTo(L + pw, yy); ctx.stroke(); ctx.fillText(fmt(v, 3), L - 6, yy); }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (const v of niceTicks(xmin, xmax, Math.max(3, Math.round(pw/70)))){ const xx = Math.round(X(v)) + 0.5; ctx.beginPath(); ctx.moveTo(xx, T); ctx.lineTo(xx, T + ph); ctx.stroke(); ctx.fillText(fmt(v, 3), xx, T + ph + 5); }
+    ctx.strokeStyle = cAxis; ctx.strokeRect(L + 0.5, T + 0.5, pw, ph);
+    if (spec.xlabel){ ctx.fillText(spec.xlabel, L + pw/2, H - 14); }
+    // vlines
+    ctx.save(); ctx.beginPath(); ctx.rect(L, T, pw, ph); ctx.clip();
+    for (const v of (spec.vlines || [])){ if (v.x < xmin || v.x > xmax) continue; ctx.strokeStyle = v.color; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(X(v.x), T); ctx.lineTo(X(v.x), T + ph); ctx.stroke(); ctx.setLineDash([]);
+      if (v.label){ ctx.fillStyle = v.color; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(v.label, X(v.x) + 3, T + 3); } }
+    // series
+    for (const s of spec.series){
+      ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 1.6; ctx.globalAlpha = s.alpha === undefined ? 1 : s.alpha; ctx.setLineDash(s.dash || []);
+      ctx.beginPath(); let pen = false;
+      for (let i = 0; i < s.x.length; i++){
+        const v = s.y[i]; if (!isFinite(v)){ pen = false; continue; }
+        const xx = X(s.x[i]), yy = Math.max(-1e5, Math.min(1e5, Y(v)));
+        if (!pen){ ctx.moveTo(xx, yy); pen = true; } else ctx.lineTo(xx, yy);
+      }
+      ctx.stroke(); ctx.globalAlpha = 1; ctx.setLineDash([]);
+    }
+    for (const mk of (spec.markers || [])){
+      if (!isFinite(mk.x) || !isFinite(mk.y)) continue;
+      ctx.fillStyle = mk.color; ctx.beginPath(); ctx.arc(X(mk.x), Y(mk.y), 3.5, 0, Math.PI*2); ctx.fill();
+      if (mk.label){ ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText(mk.label, X(mk.x) + 5, Y(mk.y) - 3); }
+    }
+    ctx.restore();
+    // legend
+    const items = spec.series.filter(s => s.label);
+    if (items.length){
+      ctx.font = '11px system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      const widths = items.map(s => ctx.measureText(s.label).width + 26);
+      const lw = Math.min(pw - 10, Math.max(...widths) + 8), lh = items.length*15 + 6;
+      const lx = L + pw - lw - 6, ly = T + 6;
+      ctx.globalAlpha = 0.85; ctx.fillStyle = cPanel; ctx.fillRect(lx, ly, lw, lh); ctx.globalAlpha = 1;
+      ctx.strokeStyle = css('--border'); ctx.strokeRect(lx + 0.5, ly + 0.5, lw, lh);
+      items.forEach((s, i) => { const yy = ly + 10 + i*15; ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.setLineDash(s.dash || []); ctx.globalAlpha = s.alpha === undefined ? 1 : Math.max(0.5, s.alpha);
+        ctx.beginPath(); ctx.moveTo(lx + 6, yy); ctx.lineTo(lx + 20, yy); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+        ctx.fillStyle = css('--text'); ctx.fillText(s.label, lx + 24, yy); });
+    }
+    // hover readout
+    if (hoverX !== null && hoverX >= L && hoverX <= L + pw){
+      const tv = xmin + (hoverX - L)/pw*(xmax - xmin);
+      ctx.strokeStyle = cAxis; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(hoverX + 0.5, T); ctx.lineTo(hoverX + 0.5, T + ph); ctx.stroke(); ctx.setLineDash([]);
+      const rows = [`t = ${fmt(tv, 3)} s`];
+      for (const s of spec.series){ if (!s.label) continue; let lo = 0, hi = s.x.length - 1; while (hi - lo > 1){ const mid = (lo + hi) >> 1; if (s.x[mid] < tv) lo = mid; else hi = mid; }
+        const j = Math.abs(s.x[lo] - tv) < Math.abs(s.x[hi] - tv) ? lo : hi; rows.push(`${s.label}: ${fmt(s.y[j], 4)}`); }
+      ctx.font = '11px system-ui, sans-serif'; const bw = Math.max(...rows.map(r => ctx.measureText(r).width)) + 12, bh = rows.length*14 + 8;
+      let bx = hoverX + 10; if (bx + bw > L + pw) bx = hoverX - bw - 10; const by = T + ph - bh - 6;
+      ctx.globalAlpha = 0.92; ctx.fillStyle = cPanel; ctx.fillRect(bx, by, bw, bh); ctx.globalAlpha = 1; ctx.strokeStyle = css('--border'); ctx.strokeRect(bx + 0.5, by + 0.5, bw, bh);
+      ctx.fillStyle = css('--text'); ctx.textAlign = 'left'; ctx.textBaseline = 'top'; rows.forEach((r, i) => ctx.fillText(r, bx + 6, by + 5 + i*14));
+    }
+  }
+  canvas.addEventListener('mousemove', ev => { const r = canvas.getBoundingClientRect(); hoverX = ev.clientX - r.left; render(); });
+  canvas.addEventListener('mouseleave', () => { hoverX = null; render(); });
+  new ResizeObserver(() => render()).observe(canvas);
+  return {draw(s){ spec = s; render(); }, render};
+}
+function PzPlot(canvas){
+  const ctx = canvas.getContext('2d'); let spec = null;
+  function render(){
+    if (!spec) return;
+    const rect = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const W = Math.max(50, rect.width), H = Math.max(50, rect.height);
+    canvas.width = Math.round(W*dpr); canvas.height = Math.round(H*dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const L = 46, R = 10, T = 10, B = 30, pw = W - L - R, ph = H - T - B;
+    const all = spec.poles.concat(spec.zeros);
+    let frame = all;
+    let far = [];
+    if (spec.zoom && spec.poles.length){
+      // frame the slowest (dominant) poles; anything more than 6x further out is reported as "far"
+      const mags = spec.poles.map(p => Math.hypot(p.re, p.im)).filter(m => m < 1e9).sort((a, b) => a - b);
+      const ref = Math.max(0.5, mags[Math.min(1, mags.length - 1)] || 0.5);
+      const lim = 6*ref; frame = all.filter(p => Math.hypot(p.re, p.im) <= lim); far = spec.poles.filter(p => Math.hypot(p.re, p.im) > lim);
+      if (frame.length < 2) { frame = all.filter(p => Math.hypot(p.re, p.im) <= 12*ref); far = spec.poles.filter(p => Math.hypot(p.re, p.im) > 12*ref); }
+    }
+    if (!frame.length) frame = [{re:-1, im:0}];
+    let xmin = Math.min(...frame.map(p => p.re), -0.5), xmax = Math.max(...frame.map(p => p.re), 0.5), ym = Math.max(...frame.map(p => Math.abs(p.im)), 0.5);
+    const xs = xmax - xmin; xmin -= xs*0.12; xmax += xs*0.12; ym *= 1.25; ym = Math.max(ym, (xmax - xmin)*ph/pw/2*0.6);
+    const X = v => L + (v - xmin)/(xmax - xmin)*pw, Y = v => T + (1 - (v + ym)/(2*ym))*ph;
+    ctx.font = '11px system-ui, sans-serif';
+    if (xmax > 0){ ctx.fillStyle = css('--rhp'); ctx.fillRect(X(0), T, L + pw - X(0), ph); }
+    ctx.strokeStyle = css('--grid'); ctx.fillStyle = css('--muted'); ctx.lineWidth = 1;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (const v of niceTicks(xmin, xmax, Math.max(3, Math.round(pw/70)))){ const xx = Math.round(X(v)) + 0.5; ctx.beginPath(); ctx.moveTo(xx, T); ctx.lineTo(xx, T + ph); ctx.stroke(); ctx.fillText(fmt(v, 3), xx, T + ph + 4); }
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (const v of niceTicks(-ym, ym, Math.max(3, Math.round(ph/40)))){ const yy = Math.round(Y(v)) + 0.5; ctx.beginPath(); ctx.moveTo(L, yy); ctx.lineTo(L + pw, yy); ctx.stroke(); ctx.fillText(fmt(v, 3), L - 5, yy); }
+    ctx.strokeStyle = css('--axis'); ctx.strokeRect(L + 0.5, T + 0.5, pw, ph);
+    ctx.beginPath(); ctx.moveTo(X(0), T); ctx.lineTo(X(0), T + ph); ctx.moveTo(L, Y(0)); ctx.lineTo(L + pw, Y(0)); ctx.stroke();
+    ctx.fillStyle = css('--muted'); ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText('Real axis σ', L + pw/2, H - 2);
+    ctx.save(); ctx.beginPath(); ctx.rect(L, T, pw, ph); ctx.clip();
+    if (spec.locus){ ctx.fillStyle = css('--ghost'); for (const p of spec.locus){ ctx.globalAlpha = 0.55; ctx.fillRect(X(p.re) - 1, Y(p.im) - 1, 2, 2); } ctx.globalAlpha = 1; }
+    const acc = css('--accent');
+    spec.trail.forEach((ps, k) => { ctx.globalAlpha = 0.12 + 0.5*k/Math.max(1, spec.trail.length); ctx.fillStyle = acc; for (const p of ps){ ctx.beginPath(); ctx.arc(X(p.re), Y(p.im), 2, 0, Math.PI*2); ctx.fill(); } });
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 2;
+    for (const z of spec.zeros){ ctx.strokeStyle = css('--i'); ctx.beginPath(); ctx.arc(X(z.re), Y(z.im), 5, 0, Math.PI*2); ctx.stroke(); }
+    for (const p of spec.poles){ ctx.strokeStyle = p.re > 1e-9 ? css('--bad') : acc; const xx = X(p.re), yy = Y(p.im);
+      ctx.beginPath(); ctx.moveTo(xx - 5, yy - 5); ctx.lineTo(xx + 5, yy + 5); ctx.moveTo(xx + 5, yy - 5); ctx.lineTo(xx - 5, yy + 5); ctx.stroke(); }
+    if (spec.dom){ const d = spec.dom, wn = Math.hypot(d.re, d.im), z = -d.re/wn; ctx.fillStyle = css('--text'); ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillText(Math.abs(d.im) > 1e-9 ? `ζ = ${fmt(z, 2)}, ωn = ${fmt(wn, 3)}` : `τ = ${fmt(1/Math.abs(d.re), 3)} s`, Math.min(X(d.re) + 7, L + pw - 110), Y(Math.abs(d.im)) - 4); }
+    ctx.restore();
+    spec.farNote = far;
+  }
+  new ResizeObserver(() => render()).observe(canvas);
+  return {draw(s){ spec = s; render(); return spec; }, render};
+}
+
+/* ---------- plots ---------- */
+const plotMain = TimePlot($('cvMain')), plotLow = TimePlot($('cvLow')), plotPz = PzPlot($('cvPz'));
+const plotQuiz = TimePlot($('cvQuiz')), plotQuizU = TimePlot($('cvQuizU')), plotCh = TimePlot($('cvCh'));
+
+/* ---------- compute ---------- */
+function stepOpt(T){ return {T, ref:'step', amp:1, period:T, distAmp:0, distT:0, noise:0, satOn:false, umax:10, aw:true, derivMeas:false, seed:1}; }
+function runCase(plant, g, opt){
+  const an = Core.analyze(plant, g, opt.derivMeas);
+  const clean = Core.simulate(plant, g, Object.assign({}, opt, {ref:'step', distAmp:0, noise:0}));
+  const m = Core.stepMetrics(clean, an, opt.amp);
+  const needDisp = opt.ref !== 'step' || opt.distAmp || opt.noise;
+  const disp = needDisp ? Core.simulate(plant, g, opt) : clean;
+  return {an, m, clean, disp};
+}
+function classify(an, m, amp){
+  if (!an.stable) return an.marginal ? {txt:'Marginally stable: keeps oscillating', cls:'warn'} : {txt:'UNSTABLE', cls:'bad'};
+  let t;
+  if (m.os > 2) t = 'Under-damped'; else if (m.os > 0.1) t = 'Nearly critically damped'; else t = 'Over-damped (no overshoot)';
+  const errFlag = isFinite(m.ess) && Math.abs(m.ess) > 0.005*Math.abs(amp);
+  return {txt: t + (errFlag ? ', with steady-state error' : ', zero error'), cls: errFlag ? 'warn' : 'good'};
+}
+
+function compute(){
+  const res = runCase(S.plant, S.g, S.opt);
+  S.cur = Object.assign(res, {g:Object.assign({}, S.g), sel:decimate(res.disp.t, res.disp.y)});
+  if (S.interacting){ S.trail.push(res.an.poles); if (S.trail.length > 40) S.trail.shift(); }
+  drawExplore();
+  if (typeof svOnData === 'function' && typeof SV !== 'undefined') svOnData();
+}
+let rafPending = false;
+function schedule(){ if (rafPending) return; rafPending = true; requestAnimationFrame(() => { rafPending = false; compute(); }); }
+
+function snapshot(){
+  const c = S.cur; if (!c) return null;
+  return {g:Object.assign({}, c.g), m:Object.assign({}, c.m), an:{stable:c.an.stable, marginal:c.an.marginal}, sel:c.sel, label:`Kp ${fmt(c.g.Kp)}, Ki ${fmt(c.g.Ki)}, Kd ${fmt(c.g.Kd)}`};
+}
+function beginChange(name, from){
+  if (!S.interacting){ S.before = snapshot(); S.interacting = true; S.trail = S.cur ? [S.cur.an.poles] : []; S.changed = {name, from}; }
+  else if (!S.changed || S.changed.name !== name){ S.changed = {name, from}; }
+}
+function endChange(){ S.interacting = false; }
+
+/* ---------- explore drawing ---------- */
+function deltaHtml(key, b, a, better){
+  if (!b) return '';
+  const bv = b.m[key], av = a.m[key];
+  if (!isFinite(bv) || !isFinite(av)){ if (isFinite(bv) !== isFinite(av)) return `<span class="neutral">was ${fmt(bv)}</span>`; return ''; }
+  const absb = key === 'ess' ? Math.abs(bv) : bv, absa = key === 'ess' ? Math.abs(av) : av;
+  const diff = absa - absb, rel = Math.abs(diff)/Math.max(1e-9, Math.abs(absb));
+  const thr = key === 'os' ? 0.3 : 0;
+  if (Math.abs(diff) <= thr || rel < 0.02) return `<span class="neutral">no change</span>`;
+  const up = diff > 0, good = better === 'low' ? !up : up;
+  return `<span class="${up ? 'up' : 'dn'}-${good ? 'good' : 'bad'}">${up ? '▲' : '▼'} from ${fmt(bv)}</span>`;
+}
+function drawMetrics(){
+  const c = S.cur, b = S.before && S.before !== null ? S.before : null;
+  const a = {m:c.m};
+  const cl = classify(c.an, c.m, S.opt.amp);
+  const ts = c.m.notSettled ? `> ${fmt(S.opt.T)} s` : (isFinite(c.m.ts) ? fmt(c.m.ts) + ' s' : '–');
+  const gm = c.an.stable ? Core.gainMargin(c.an) : null;
+  const cards = [
+    {k:'Overshoot', v:isFinite(c.m.os) ? fmt(c.m.os) + ' %' : '–', d:deltaHtml('os', b, a, 'low')},
+    {k:'Rise time (10–90 %)', v:isFinite(c.m.tr) ? fmt(c.m.tr) + ' s' : '–', d:deltaHtml('tr', b, a, 'low')},
+    {k:'Settling time (2 %)', v:ts, d:deltaHtml('ts', b, a, 'low')},
+    {k:'Steady-state error', v:isFinite(c.m.ess) ? fmt(Math.abs(c.m.ess) < 1e-10 ? 0 : c.m.ess) : '–', d:deltaHtml('ess', b, a, 'low')},
+    {k:'Peak control |u|', v:fmt(c.m.upeak), d:deltaHtml('upeak', b, a, 'low')},
+    {k:'Stability', v:`<span class="status ${c.an.stable ? 'good' : (c.an.marginal ? 'warn' : 'bad')}">${c.an.stable ? 'stable' : (c.an.marginal ? 'marginal' : 'unstable')}</span>`,
+     d:`<span class="neutral">${gm === null ? '' : gm === Infinity ? 'gain can rise without limit' : 'gains ×' + fmt(gm, 3) + ' → unstable'}</span>`},
+  ];
+  $('metrics').innerHTML = cards.map(q => `<div class="metric"><div class="k">${q.k}</div><div class="v">${q.v}</div><div class="dl">${q.d}</div></div>`).join('') +
+    `<div class="muted" style="grid-column:1/-1;font-size:12px">${cl.txt}. Metrics come from a clean unit-step test (no noise or disturbance). ${S.opt.satOn ? 'Pole analysis ignores the actuator limit.' : ''}</div>`;
+}
+function drawExplore(){
+  const c = S.cur; if (!c) return;
+  drawMetrics();
+  const T = S.opt.T, amp = S.opt.amp;
+  const series = [];
+  S.pins.forEach(p => series.push({x:p.sel.x, y:p.sel.y, color:p.color, width:1.4, label:p.label, alpha:0.9}));
+  if ($('ghostOn').checked && S.before && S.before.sel) series.push({x:S.before.sel.x, y:S.before.sel.y, color:css('--ghost'), width:1.6, dash:[6, 4], label:'previous', alpha:0.9});
+  const rr = decimate(c.disp.t, c.disp.r);
+  series.push({x:rr.x, y:rr.y, color:css('--ref'), width:1.2, dash:[3, 3], label:'reference r', alpha:0.75});
+  series.push({x:c.sel.x, y:c.sel.y, color:css('--accent'), width:2.2, label:'output y'});
+  const spec = {series, xmin:0, xmax:T, xlabel:'time (s)', includeZero:true, bands:[], vlines:[], markers:[]};
+  if (!$('autoY').checked){ spec.ymin = -0.3*Math.abs(amp); spec.ymax = 1.8*Math.abs(amp); }
+  if (S.opt.ref === 'step' && c.an.stable && isFinite(c.m.yss) && $('markOn').checked){
+    const yss = c.m.yss; spec.bands.push({y0:yss - 0.02*Math.abs(yss), y1:yss + 0.02*Math.abs(yss), color:css('--band')});
+    if (isFinite(c.m.ts) && c.m.ts > 0) spec.vlines.push({x:c.m.ts, color:css('--muted'), label:'settled'});
+    if (isFinite(c.m.tp)) spec.markers.push({x:c.m.tp, y:yss*(1 + c.m.os/100), color:css('--accent'), label:`peak ${fmt(c.m.os, 3)} %`});
+  }
+  if (S.opt.distAmp) spec.vlines.push({x:S.opt.distT, color:css('--warn'), label:'disturbance'});
+  if (c.disp.diverged) spec.vlines.push({x:c.disp.t[c.disp.t.length - 1], color:css('--bad'), label:''});
+  plotMain.draw(spec);
+  // lower plot
+  const sel = $('lowSel').value;
+  let low;
+  if (sel === 'u'){ const d = decimate(c.disp.t, c.disp.u); low = [{x:d.x, y:d.y, color:css('--u'), width:1.6, label:'u(t)'}]; $('lowTitle').textContent = 'Control signal u(t)'; }
+  else if (sel === 'e'){ const d = decimate(c.disp.t, c.disp.e); low = [{x:d.x, y:d.y, color:css('--err'), width:1.6, label:'e(t)'}]; $('lowTitle').textContent = 'Error e(t)'; }
+  else { const p = decimate(c.disp.t, c.disp.P), i = decimate(c.disp.t, c.disp.I), d = decimate(c.disp.t, c.disp.D);
+    low = []; if (S.g.useP && S.g.Kp) low.push({x:p.x, y:p.y, color:css('--p'), width:1.6, label:'P term'});
+    if (S.g.useI && S.g.Ki) low.push({x:i.x, y:i.y, color:css('--i'), width:1.6, label:'I term'});
+    if (S.g.useD && S.g.Kd) low.push({x:d.x, y:d.y, color:css('--d'), width:1.6, label:'D term'});
+    if (!low.length) low.push({x:p.x, y:p.y, color:css('--p'), width:1.6, label:'P term'});
+    $('lowTitle').textContent = 'P, I and D terms'; }
+  const lowSpec = {series:low, xmin:0, xmax:T, xlabel:'time (s)', includeZero:true};
+  if (S.opt.satOn && sel !== 'e') lowSpec.bands = [{y0:S.opt.umax, y1:1e9, color:css('--rhp')}, {y0:-1e9, y1:-S.opt.umax, color:css('--rhp')}];
+  if (sel === 'terms' || sel === 'u'){ // keep huge derivative spikes from flattening everything
+    const vals = []; low.forEach(s => s.y.forEach(v => { if (isFinite(v)) vals.push(Math.abs(v)); }));
+    vals.sort((a, b) => a - b); const p98 = vals[Math.floor(vals.length*0.985)] || 1, mx = vals[vals.length - 1] || 1;
+    if (mx > 6*p98){ lowSpec.ymin = -1.3*p98; lowSpec.ymax = 1.3*p98; let mn = Infinity; low.forEach(s => s.y.forEach(v => { if (isFinite(v) && v < mn) mn = v; })); if (mn >= -0.05*p98) lowSpec.ymin = -0.2*p98;
+      lowSpec.vlines = [{x:0, color:css('--d'), label:`spike to ${fmt(mx, 3)} (off scale)`}]; }
+  }
+  plotLow.draw(lowSpec);
+  // pole-zero
+  const pzSpec = plotPz.draw({poles:c.an.poles, zeros:c.an.zeros, trail:S.trail.slice(0, -1), dom:c.an.dom, zoom:$('zoomPz').checked, locus:$('locusOn').checked ? Core.locus(c.an) : null});
+  const far = (pzSpec.farNote || []).filter(p => p.im >= 0);
+  $('pzNote').innerHTML = `Poles: ${c.an.poles.slice().sort((a, b) => b.re - a.re).filter(p => p.im >= 0).map(p => p.im ? `${fmt(p.re, 3)} ± j${fmt(p.im, 3)}` : fmt(p.re, 3)).join(', ')}` +
+    (far.length ? ` <span class="muted">(${far.length} far pole${far.length > 1 ? 's' : ''} off scale)</span>` : '') +
+    (S.plant.delay > 0 ? '. Delay shown with a first-order Padé approximation.' : '') + ($('locusOn').checked ? ' Grey dots: where the poles go if all gains are multiplied by 0.001 … 1000.' : '');
+  drawExplain();
+  drawPins();
+  gainsExplore.refresh();
+  highlightEffects();
+}
+function highlightEffects(){
+  document.querySelectorAll('#effTable tr[data-k]').forEach(tr => tr.classList.toggle('hl', !!(S.changed && tr.dataset.k === S.changed.name)));
+}
+function drawPins(){
+  $('pinList').innerHTML = S.pins.map((p, i) => `<span class="pin"><span class="chip" style="background:${p.color}"></span>${p.label}<button data-i="${i}" title="Remove">✕</button></span>`).join('');
+  $('pinList').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { S.pins.splice(+b.dataset.i, 1); drawExplore(); }));
+}
+
+/* ---------- explanation ---------- */
+function describeChange(ch, b, a){
+  if (!ch) return '';
+  const nm = ch.name;
+  if (['Kp', 'Ki', 'Kd'].includes(nm)){
+    const f = b.g[nm], t = a.g[nm];
+    if (f === t) return `${nm} unchanged`;
+    return `You ${t > f ? 'increased' : 'decreased'} <b>${nm}</b> from ${fmt(f)} to ${fmt(t)}.`;
+  }
+  return `You changed <b>${ch.label || nm}</b>.`;
+}
+function explainChange(b, a, ch, opt){
+  const out = [];
+  if (!b || !ch) return {head:'', lines:[]};
+  const head = describeChange(ch, b, a);
+  const dm = (k, absv) => { const x = absv ? Math.abs(b.m[k]) : b.m[k], y = absv ? Math.abs(a.m[k]) : a.m[k]; return {x, y, ok:isFinite(x) && isFinite(y), d:y - x, r:(y - x)/Math.max(1e-9, Math.abs(x))}; };
+  const os = dm('os'), tr = dm('tr'), ts = dm('ts'), ess = dm('ess', true), up = dm('upeak');
+  const wasStable = b.an.stable, isStable = a.an.stable;
+  const nm = ch.name, upDir = ['Kp', 'Ki', 'Kd'].includes(nm) ? a.g[nm] > b.g[nm] : null;
+  if (wasStable && !isStable){ out.push(`<b style="color:var(--bad)">The loop became ${a.an.marginal ? 'marginally stable' : 'UNSTABLE'}.</b> A pair of poles moved onto or across the imaginary axis (see the pole map). ${upDir ? 'Bring ' + nm + ' back down.' : ''}`); return {head, lines:out}; }
+  if (!wasStable && isStable){ out.push(`<b style="color:var(--good)">The loop is stable again</b>: all poles are now in the left half-plane.`); }
+  if (!isStable){ out.push('The loop is unstable, so the response grows instead of settling. Reduce the gains, or add derivative action if the plant itself is unstable.'); return {head, lines:out}; }
+  const bits = [];
+  if (os.ok && Math.abs(os.d) > 0.5) bits.push(`overshoot ${os.d > 0 ? 'rose' : 'fell'} from ${fmt(os.x)} % to ${fmt(os.y)} %`);
+  if (tr.ok && Math.abs(tr.r) > 0.05) bits.push(`rise time ${tr.d > 0 ? 'got longer' : 'got shorter'} (${fmt(tr.x)} → ${fmt(tr.y)} s)`);
+  if (ts.ok && Math.abs(ts.r) > 0.05) bits.push(`settling time ${ts.d > 0 ? 'increased' : 'decreased'} (${fmt(ts.x)} → ${fmt(ts.y)} s)`);
+  if (ess.ok && Math.abs(ess.d) > 1e-4 && Math.abs(ess.r) > 0.05) bits.push(ess.y < 1e-6 ? 'the steady-state error disappeared' : `steady-state error ${ess.d > 0 ? 'grew' : 'shrank'} (${fmt(ess.x)} → ${fmt(ess.y)})`);
+  if (up.ok && Math.abs(up.r) > 0.1) bits.push(`peak control signal ${up.d > 0 ? 'rose' : 'fell'} (${fmt(up.x)} → ${fmt(up.y)})`);
+  if (bits.length) out.push('Result: ' + bits.join('; ') + '.');
+  else out.push('The step response hardly changed. Try a bigger change, or look at u(t) and the pole map.');
+  if (nm === 'Kp' && upDir !== null){
+    if (upDir){ out.push('More Kp makes the controller push harder on the same error, so the output rises faster.' + (os.ok && os.d > 0.5 ? ' The price is less damping: the poles move further from the real axis, so the response overshoots and rings more.' : ''));
+      if (ess.ok && ess.y > 1e-6) out.push('The error is smaller but not zero: with P control alone some error is needed to produce any control signal (unless the plant has an integrator).'); }
+    else out.push('Less Kp gives a gentler, slower response with more damping' + (ess.ok && ess.y > 1e-6 ? ' and a larger steady-state error.' : '.'));
+  }
+  if (nm === 'Ki' && upDir !== null){
+    if (upDir){ if (ess.ok && b.g.Ki === 0 && ess.y < 1e-6) out.push('Integral action keeps adding up the error until it is zero, so the output now reaches the reference exactly.');
+      if (os.ok && os.d > 0.5) out.push('Too much Ki over-integrates: the integral keeps pushing after the output reaches the reference, which causes overshoot and a slow, rolling oscillation (guide Rule 4).');
+      else if (ts.ok && ts.d < 0) out.push('The error is removed faster because the integral builds up more quickly.'); }
+    else out.push('Less Ki removes the error more slowly (look for a slow creep up to the reference)' + (os.ok && os.d < -0.5 ? ', but with less overshoot.' : '.'));
+  }
+  if (nm === 'Kd' && upDir !== null){
+    if (upDir){ if (os.ok && os.d < -0.5) out.push('Derivative action reacts to how fast the error is changing and brakes the response before it overshoots, so the loop is better damped (lead compensation).');
+      if (up.ok && up.d > 0) out.push('Notice the bigger spike in u(t) at the start: the derivative of a step is huge (derivative kick). Try "derivative on measurement" in the options.');
+      if (opt.noise > 0) out.push('With sensor noise switched on, more Kd makes the control signal noisier. Look at u(t).');
+      if (ess.ok && Math.abs(ess.d) < 1e-6 && ess.y > 1e-6) out.push('Kd does not change the steady-state error: once the output is steady its derivative is zero.'); }
+    else out.push('Less Kd means less damping' + (os.ok && os.d > 0.5 ? ', so the overshoot came back.' : '.'));
+  }
+  if (a.g.Ki === 0 && a.g.Kd === 0 && a.g.useP){
+    const hasErr = ess.ok && ess.y > 0.005, hasOs = os.ok && os.y > 1;
+    if (hasOs && hasErr) out.push('<i>Rule 1 diagnosis:</i> the output overshoots the demand (lead behaviour) and an error remains (lag behaviour), so this is a lead-lag system: add D for damping, then I to remove the error.');
+    else if (hasOs) out.push('<i>Rule 1 diagnosis:</i> overshoot with no error suggests a lead system: add derivative action.');
+    else if (hasErr) out.push('<i>Rule 1 diagnosis:</i> the output stays below the demand: lag behaviour, so integral action is needed.');
+  }
+  return {head, lines:out};
+}
+function drawExplain(){
+  if (!S.before || !S.changed){ return; }
+  const a = snapshot();
+  const ex = explainChange(S.before, a, S.changed, S.opt);
+  if (!ex.head){ return; }
+  $('explain').classList.remove('muted');
+  $('explain').innerHTML = `<p>${ex.head}</p><ul>${ex.lines.map(l => `<li>${l}</li>`).join('')}</ul>`;
+}
+
+/* ---------- plant handling ---------- */
+function setPlant(key, keepGains){
+  S.plantKey = key; const P = PLANTS[key];
+  S.plant = {num:P.num.slice(), den:P.den.slice(), delay:P.delay};
+  if (!keepGains) Object.assign(S.g, P.start);
+  S.opt.T = P.T; S.opt.period = P.T; S.opt.distT = Math.round(P.T/2*10)/10;
+  $('Tin').value = S.opt.T; $('distT').value = S.opt.distT; $('delayIn').value = P.delay;
+  $('customBox').classList.toggle('hidden', key !== 'custom');
+  $('plantNote').textContent = P.note;
+  S.pins = []; S.before = null; S.changed = null; S.trail = [];
+  $('explain').classList.add('muted'); $('explain').textContent = 'Move a slider. The faint dashed curve shows the response before your change, and the arrows on the cards show what got better or worse.';
+  $('znMsg').textContent = '';
+  showPlantTf(); compute();
+}
+function showPlantTf(){
+  const p = S.plant;
+  $('plantTf').textContent = `G(s) = (${polyStr(p.num)}) / (${polyStr(p.den)})` + (p.delay > 0 ? ` · e^(−${fmt(p.delay)}s)` : '');
+}
+function parseCoeffs(str){ const a = str.trim().split(/[\s,;]+/).filter(Boolean).map(Number); return a.length && a.every(isFinite) ? a : null; }
+
+/* ---------- explore wiring ---------- */
+const gainsExplore = GainControls($('gainsExplore'), S.g, {
+  toggles:true,
+  onInput:(k, v) => { beginChange(k, S.g[k]); S.g[k] = v; schedule(); },
+  onChange:() => endChange(),
+  onToggle:(use, on, k) => { beginChange(k + ' term', null); S.changed.label = `${k} term ${on ? 'on' : 'off'}`; S.g[use] = on; compute(); endChange(); },
+});
+function optChange(label, fn){ beginChange(label, null); S.changed.label = label; fn(); compute(); endChange(); }
+for (const k of Object.keys(PLANTS)){ for (const sel of ['plantSel', 'qPlant', 'chPlant']){ if (k === 'custom' && sel !== 'plantSel') continue; const o = document.createElement('option'); o.value = k; o.textContent = PLANTS[k].name; $(sel).appendChild(o); } }
+{ const o = document.createElement('option'); o.value = 'any'; o.textContent = 'Random plant'; $('qPlant').insertBefore(o, $('qPlant').firstChild); $('qPlant').value = 'lab'; }
+$('plantSel').addEventListener('change', e => setPlant(e.target.value));
+for (const [k, lbl] of [['lab','Lab plant'],['servoSpd','Servo speed'],['servoPos','Servo position'],['heater','Heater'],['tank','Tank'],['ballbeam','Ball on beam']]){
+  const b = document.createElement('button'); b.className = 'small'; b.textContent = lbl; b.addEventListener('click', () => { $('plantSel').value = k; setPlant(k); }); $('quickPlants').appendChild(b); }
+$('cApply').addEventListener('click', () => {
+  const n = parseCoeffs($('cNum').value), d = parseCoeffs($('cDen').value);
+  const msg = $('cMsg');
+  if (!n || !d){ msg.textContent = 'Enter numbers separated by spaces.'; return; }
+  const dd = Core.trim(d), nn = Core.trim(n);
+  if (Math.abs(dd[0]) < 1e-12){ msg.textContent = 'Denominator cannot be zero.'; return; }
+  if (nn.length > dd.length){ msg.textContent = 'Numerator order must not exceed denominator order.'; return; }
+  if (dd.length > 9){ msg.textContent = 'Please keep the order at 8 or less.'; return; }
+  PLANTS.custom.num = nn; PLANTS.custom.den = dd; PLANTS.custom.delay = Math.max(0, +$('delayIn').value || 0);
+  msg.textContent = nn.length === dd.length ? 'OK (biproper plant: one-sample loop delay used in simulation).' : 'Applied.';
+  setPlant('custom', true);
+});
+$('delayIn').addEventListener('change', () => optChange('dead time', () => { S.plant.delay = Math.max(0, +$('delayIn').value || 0); showPlantTf(); }));
+$('refSel').addEventListener('change', () => optChange('reference type', () => { S.opt.ref = $('refSel').value; }));
+$('ampIn').addEventListener('change', () => optChange('reference size', () => { S.opt.amp = +$('ampIn').value || 1; }));
+$('Tin').addEventListener('change', () => optChange('simulation time', () => { S.opt.T = Math.max(0.5, +$('Tin').value || 6); S.opt.period = S.opt.T; }));
+$('distIn').addEventListener('change', () => optChange('load disturbance', () => { S.opt.distAmp = +$('distIn').value || 0; }));
+$('distT').addEventListener('change', () => optChange('disturbance time', () => { S.opt.distT = Math.max(0, +$('distT').value || 0); }));
+$('noiseIn').addEventListener('change', () => optChange('sensor noise', () => { S.opt.noise = Math.max(0, +$('noiseIn').value || 0); }));
+$('Nin').addEventListener('change', () => optChange('derivative filter N', () => { S.g.N = Math.max(1, +$('Nin').value || 100); }));
+$('dmeas').addEventListener('change', () => optChange('derivative on measurement', () => { S.opt.derivMeas = $('dmeas').checked; }));
+$('satOn').addEventListener('change', () => optChange('actuator limit', () => { S.opt.satOn = $('satOn').checked; }));
+$('umaxIn').addEventListener('change', () => optChange('actuator limit', () => { S.opt.umax = Math.max(0.1, +$('umaxIn').value || 10); }));
+$('awOn').addEventListener('change', () => optChange('anti-windup', () => { S.opt.aw = $('awOn').checked; }));
+for (const id of ['ghostOn', 'markOn', 'autoY', 'locusOn', 'zoomPz']) $(id).addEventListener('change', () => drawExplore());
+$('lowSel').addEventListener('change', () => drawExplore());
+$('pinBtn').addEventListener('click', () => {
+  if (S.pins.length >= 6){ toast('Up to 6 pinned responses'); return; }
+  const c = S.cur; S.pins.push({sel:c.sel, color:PIN_COLORS[S.pins.length % PIN_COLORS.length], label:`Kp ${fmt(c.g.Kp)}, Ki ${fmt(c.g.Ki)}, Kd ${fmt(c.g.Kd)}`}); drawExplore();
+});
+$('clearPins').addEventListener('click', () => { S.pins = []; drawExplore(); });
+$('resetBtn').addEventListener('click', () => { S.g.useP = S.g.useI = S.g.useD = true; S.g.N = 100; $('Nin').value = 100; setPlant(S.plantKey, false); });
+$('znBtn').addEventListener('click', () => {
+  const u = Core.ultimate(S.plant);
+  if (!u.ok){ $('znMsg').textContent = u.why; return; }
+  beginChange('Ziegler–Nichols', null); S.changed.label = 'Ziegler–Nichols tuning';
+  S.g.Kp = nice3(0.6*u.Ku); S.g.Ki = nice3(1.2*u.Ku/u.Tu); S.g.Kd = nice3(0.075*u.Ku*u.Tu); S.g.useP = S.g.useI = S.g.useD = true;
+  $('znMsg').innerHTML = `Ultimate gain Ku = ${fmt(u.Ku)}, period Tu = ${fmt(u.Tu)} s → Kp = 0.6Ku = ${fmt(S.g.Kp)}, Ki = 1.2Ku/Tu = ${fmt(S.g.Ki)}, Kd = 0.075KuTu = ${fmt(S.g.Kd)}. Expect an aggressive response: fine-tune from here.`;
+  compute(); endChange();
+});
+$('mBtn').addEventListener('click', () => {
+  const p = S.plant, g = S.g, Kp = g.useP ? g.Kp : 0, Ki = g.useI ? g.Ki : 0, Kd = g.useD ? g.Kd : 0;
+  const code = `% PID Tuning Lab export\ns = tf('s');\nG = tf([${p.num.join(' ')}], [${p.den.join(' ')}]);${p.delay > 0 ? `\nG.InputDelay = ${p.delay};` : ''}\nC = pid(${Kp}, ${Ki}, ${Kd}, ${fmt(1/g.N, 4)});   % Kp, Ki, Kd, derivative filter Tf = 1/N\nT = feedback(C*G, 1);\nstep(T, ${S.opt.T}); grid on\nstepinfo(T)`;
+  const done = () => toast('MATLAB code copied');
+  try { navigator.clipboard.writeText(code).then(done, () => prompt('Copy the MATLAB code:', code)); }
+  catch(e){ prompt('Copy the MATLAB code:', code); }
+});
+
+/* ---------- tabs and theme ---------- */
+document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x === b));
+  for (const t of ['explore', 'system', 'quiz', 'challenge', 'guide']) $('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab);
+  SV.active = b.dataset.tab === 'system';
+  if (SV.active){ svSize(); svOnData(); svRestart(); }
+  if (b.dataset.tab === 'quiz' && !Q.cur) newQuestion();
+  if (b.dataset.tab === 'challenge' && !CH.target) newChallenge();
+  requestAnimationFrame(() => { plotMain.render(); plotLow.render(); plotPz.render(); plotQuiz.render(); plotQuizU.render(); plotCh.render(); });
+}));
+const THEMES = ['auto', 'light', 'dark'];
+function applyTheme(t){ if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t; $('themeBtn').textContent = 'Theme: ' + t;
+  try { localStorage.setItem('pidlab-theme', t); } catch(e){}
+  requestAnimationFrame(() => { if (S.cur) drawExplore(); if (Q.cur) drawQuiz(); if (CH.target) drawChallenge(); }); }
+$('themeBtn').addEventListener('click', () => { const cur = document.documentElement.dataset.theme || 'auto'; applyTheme(THEMES[(THEMES.indexOf(cur) + 1) % 3]); });
+try { const t = localStorage.getItem('pidlab-theme'); if (t && THEMES.includes(t) && t !== 'auto') document.documentElement.dataset.theme = t, $('themeBtn').textContent = 'Theme: ' + t; } catch(e){}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.cur) drawExplore(); if (Q.cur) drawQuiz(); if (CH.target) drawChallenge(); });
+
+/* ============================ QUIZ ============================ */
+const Q = {cur:null, score:0, total:0, streak:0};
+try { const s = JSON.parse(localStorage.getItem('pidlab-quiz') || 'null'); if (s){ Q.score = s.score|0; Q.total = s.total|0; } } catch(e){}
+const ANS = [['Kp', 1], ['Kp', -1], ['Ki', 1], ['Ki', -1], ['Kd', 1], ['Kd', -1]];
+$('qAnswers').innerHTML = ANS.map(([k, d], i) => `<button data-i="${i}">${k} ${d > 0 ? '▲ up' : '▼ down'}</button>`).join('');
+$('qAnswers').querySelectorAll('button').forEach(b => b.addEventListener('click', () => answer(+b.dataset.i)));
+function rand(a, b){ return a + Math.random()*(b - a); }
+function newQuestion(){
+  const keys = Object.keys(PLANTS).filter(k => k !== 'custom');
+  const pk = $('qPlant').value === 'any' ? keys[Math.floor(Math.random()*keys.length)] : $('qPlant').value;
+  const P = PLANTS[pk], plant = {num:P.num, den:P.den, delay:P.delay};
+  const hard = $('qLevel').value === 'hard';
+  for (let attempt = 0; attempt < 60; attempt++){
+    const base = {Kp:nice3(P.base.Kp*rand(0.7, 1.3)), Ki:P.base.Ki ? nice3(P.base.Ki*rand(0.6, 1.4)) : 0, Kd:P.base.Kd ? nice3(P.base.Kd*rand(0.6, 1.4)) : 0, N:100, useP:true, useI:true, useD:true};
+    const [k, dir] = ANS[Math.floor(Math.random()*6)];
+    const after = Object.assign({}, base);
+    if (dir > 0){ after[k] = base[k] > 0 ? nice3(base[k]*(hard ? rand(1.5, 1.9) : rand(2.5, 4))) : nice3((k === 'Ki' ? 0.6 : 0.15)*base.Kp*(hard ? 0.6 : 1.5)); }
+    else { if (base[k] === 0) continue; after[k] = nice3(base[k]*(hard ? rand(0.5, 0.65) : rand(0.2, 0.35))); }
+    const opt = stepOpt(P.T);
+    const rb = runCase(plant, base, opt), ra = runCase(plant, after, opt);
+    if (!rb.an.stable || !ra.an.stable) continue;
+    const diff = Math.abs(ra.m.iae - rb.m.iae)/Math.max(1e-6, rb.m.iae), dos = Math.abs((ra.m.os || 0) - (rb.m.os || 0)), dess = Math.abs((ra.m.ess || 0) - (rb.m.ess || 0));
+    if (diff < (hard ? 0.04 : 0.1) && dos < (hard ? 2 : 5) && dess < 0.02) continue;
+    Q.cur = {pk, plant, base, after, k, dir, rb, ra, answered:false, T:P.T};
+    break;
+  }
+  if (!Q.cur) return;
+  $('qAnswers').querySelectorAll('button').forEach(b => { b.classList.remove('correct', 'wrong'); b.disabled = false; });
+  $('qFeedback').classList.add('hidden');
+  drawQuiz();
+}
+function metricsTable(rb, ra){
+  const row = (name, f) => `<tr><td>${name}</td><td>${f(rb)}</td><td>${f(ra)}</td></tr>`;
+  const ts = r => r.m.notSettled ? '> sim time' : fmt(r.m.ts) + ' s';
+  return `<table class="eff"><tr><th>Metric</th><th>Before</th><th>After</th></tr>${row('Overshoot', r => fmt(r.m.os) + ' %')}${row('Rise time', r => fmt(r.m.tr) + ' s')}${row('Settling time', ts)}${row('Steady-state error', r => fmt(Math.abs(r.m.ess) < 1e-10 ? 0 : r.m.ess))}${row('Peak |u|', r => fmt(r.m.upeak))}</table>`;
+}
+function drawQuiz(){
+  const q = Q.cur; if (!q) return;
+  const b = decimate(q.rb.clean.t, q.rb.clean.y), a = decimate(q.ra.clean.t, q.ra.clean.y);
+  plotQuiz.draw({series:[{x:[0, q.T], y:[1, 1], color:css('--ref'), width:1.2, dash:[3, 3], label:'reference', alpha:0.75},
+    {x:b.x, y:b.y, color:css('--ghost'), width:2.2, label:'before'}, {x:a.x, y:a.y, color:css('--accent'), width:2.2, label:'after'}],
+    xmin:0, xmax:q.T, xlabel:'time (s)', includeZero:true});
+  const showU = $('qShowU').checked; $('cvQuizU').classList.toggle('hidden', !showU);
+  if (showU){ const ub = decimate(q.rb.clean.t, q.rb.clean.u), ua = decimate(q.ra.clean.t, q.ra.clean.u);
+    const spec = {series:[{x:ub.x, y:ub.y, color:css('--ghost'), width:1.8, label:'u before'}, {x:ua.x, y:ua.y, color:css('--u'), width:1.8, label:'u after'}], xmin:0, xmax:q.T, xlabel:'time (s)', includeZero:true};
+    const all = ub.y.concat(ua.y).map(Math.abs).sort((x, y) => x - y); const p98 = all[Math.floor(all.length*0.985)] || 1, mx = all[all.length - 1];
+    if (mx > 6*p98){ spec.ymin = -0.3*p98; spec.ymax = 1.4*p98; spec.vlines = [{x:0, color:css('--d'), label:'spike off scale'}]; }
+    requestAnimationFrame(() => plotQuizU.draw(spec)); }
+  const showM = $('qShowM').checked || q.answered;
+  $('qMetrics').classList.toggle('hidden', !showM);
+  if (showM) $('qMetrics').innerHTML = metricsTable(q.rb, q.ra);
+  $('qScore').textContent = `Score: ${Q.score} / ${Q.total}` + (Q.streak > 1 ? `   ·   streak ${Q.streak}` : '') + `   ·   plant: ${PLANTS[q.pk].name}`;
+}
+function answer(i){
+  const q = Q.cur; if (!q || q.answered) return;
+  q.answered = true; Q.total++;
+  const [k, d] = ANS[i], ok = k === q.k && d === q.dir;
+  if (ok){ Q.score++; Q.streak++; } else Q.streak = 0;
+  try { localStorage.setItem('pidlab-quiz', JSON.stringify({score:Q.score, total:Q.total})); } catch(e){}
+  $('qAnswers').querySelectorAll('button').forEach((b, j) => { b.disabled = true; const [kk, dd] = ANS[j]; if (kk === q.k && dd === q.dir) b.classList.add('correct'); else if (j === i) b.classList.add('wrong'); });
+  const snapB = {g:q.base, m:q.rb.m, an:q.rb.an}, snapA = {g:q.after, m:q.ra.m, an:q.ra.an};
+  const ex = explainChange(snapB, snapA, {name:q.k}, {noise:0});
+  $('qFeedback').classList.remove('hidden');
+  $('qFeedback').innerHTML = `<b style="color:var(${ok ? '--good' : '--bad'})">${ok ? 'Correct!' : 'Not quite.'}</b> ${q.k} was ${q.dir > 0 ? 'increased' : 'decreased'} from ${fmt(q.base[q.k])} to ${fmt(q.after[q.k])}
+    (other gains: Kp ${fmt(q.base.Kp)}, Ki ${fmt(q.base.Ki)}, Kd ${fmt(q.base.Kd)}).<ul style="margin:6px 0 0 18px;padding:0">${ex.lines.map(l => `<li>${l}</li>`).join('')}</ul>`;
+  drawQuiz();
+}
+$('qNext').addEventListener('click', newQuestion);
+$('qResetScore').addEventListener('click', () => { Q.score = Q.total = Q.streak = 0; try { localStorage.removeItem('pidlab-quiz'); } catch(e){} drawQuiz(); });
+for (const id of ['qShowU', 'qShowM']) $(id).addEventListener('change', drawQuiz);
+$('qPlant').addEventListener('change', newQuestion); $('qLevel').addEventListener('change', newQuestion);
+
+/* ============================ CHALLENGE ============================ */
+const CH = {target:null, g:{Kp:1, Ki:0, Kd:0, N:100, useP:true, useI:true, useD:true}, revealed:false, won:false};
+const gainsCh = GainControls($('gainsChallenge'), CH.g, {toggles:false, onInput:(k, v) => { CH.g[k] = v; scheduleCh(); }, onChange:() => {}});
+let rafCh = false;
+function scheduleCh(){ if (rafCh) return; rafCh = true; requestAnimationFrame(() => { rafCh = false; drawChallenge(); }); }
+function newChallenge(){
+  const pk = $('chPlant').value, P = PLANTS[pk], plant = {num:P.num, den:P.den, delay:P.delay};
+  for (let attempt = 0; attempt < 80; attempt++){
+    const t = {Kp:nice3(P.base.Kp*rand(0.4, 2.2)), Ki:0, Kd:0, N:100, useP:true, useI:true, useD:true};
+    t.Ki = P.base.Ki ? nice3(P.base.Ki*rand(0.3, 2.5)) : (Math.random() < 0.4 ? nice3(0.3*t.Kp*rand(0.3, 1)) : 0);
+    t.Kd = P.base.Kd ? nice3(P.base.Kd*rand(0.3, 2.5)) : (Math.random() < 0.4 ? nice3(0.1*t.Kp*rand(0.3, 1)) : 0);
+    const r = runCase(plant, t, stepOpt(P.T));
+    if (!r.an.stable || r.m.os > 60 || r.m.notSettled) continue;
+    CH.target = {pk, plant, g:t, res:r, T:P.T}; break;
+  }
+  Object.assign(CH.g, PLANTS[pk].start); CH.revealed = false; CH.won = false;
+  $('chRevealTxt').textContent = ''; gainsCh.refresh(); drawChallenge();
+}
+function drawChallenge(){
+  const tg = CH.target; if (!tg) return;
+  const r = runCase(tg.plant, CH.g, stepOpt(tg.T));
+  const ty = tg.res.clean, uy = r.clean;
+  let num = 0, den = 0;
+  const n = Math.min(ty.n, uy.n);
+  // compare on a common time grid
+  const M = 600;
+  for (let i = 0; i <= M; i++){
+    const tt = tg.T*i/M, jt = Math.min(ty.n - 1, Math.round(tt/ty.dt)), ju = Math.min(uy.n - 1, Math.round(tt/uy.dt));
+    const a = ty.y[jt], b = uy.y[ju];
+    den += Math.abs(a); num += isFinite(b) ? Math.abs(b - a) : Math.abs(a)*3;
+  }
+  const score = Math.max(0, Math.min(100, 100*(1 - num/Math.max(1e-9, den))));
+  $('chBar').style.width = score.toFixed(1) + '%';
+  $('chScoreTxt').textContent = `Match: ${score.toFixed(1)} %`;
+  const td = decimate(ty.t, ty.y), ud = decimate(uy.t, uy.y);
+  plotCh.draw({series:[{x:[0, tg.T], y:[1, 1], color:css('--ref'), width:1.2, dash:[3, 3], label:'reference', alpha:0.75},
+    {x:td.x, y:td.y, color:css('--ghost'), width:3, dash:[7, 5], label:'target'}, {x:ud.x, y:ud.y, color:css('--accent'), width:2.2, label:'yours'}],
+    xmin:0, xmax:tg.T, xlabel:'time (s)', includeZero:true});
+  let tip;
+  if (!r.an.stable) tip = 'Your loop is unstable. Reduce the gains.';
+  else if (score >= 97) { tip = `<b style="color:var(--good)">Excellent match!</b> ${CH.won ? '' : 'Try "Reveal gains" to compare, or start a new target.'}`; CH.won = true; }
+  else {
+    const hints = [];
+    const tm = tg.res.m, um = r.m;
+    if (isFinite(tm.ess) && isFinite(um.ess)){ if (Math.abs(um.ess) > Math.abs(tm.ess) + 0.01) hints.push('your final value is too low: more integral (or proportional) action'); else if (Math.abs(um.ess) + 0.01 < Math.abs(tm.ess)) hints.push('the target keeps some steady-state error: it may have less (or no) integral action'); }
+    if (isFinite(tm.os) && isFinite(um.os)){ if (um.os > tm.os + 3) hints.push('too much overshoot: more Kd or less Kp/Ki'); else if (um.os + 3 < tm.os) hints.push('the target overshoots more: less damping (less Kd) or more Kp/Ki'); }
+    if (isFinite(tm.tr) && isFinite(um.tr)){ if (um.tr > tm.tr*1.25) hints.push('you rise too slowly: more Kp'); else if (um.tr < tm.tr*0.8) hints.push('you rise too fast: less Kp'); }
+    tip = hints.length ? 'Hints: ' + hints.join('; ') + '.' : 'Close! Fine-tune with the − / + buttons.';
+  }
+  $('chMsg').innerHTML = tip;
+}
+$('chNew').addEventListener('click', newChallenge);
+$('chPlant').addEventListener('change', newChallenge);
+$('chReveal').addEventListener('click', () => { if (!CH.target) return; const g = CH.target.g; $('chRevealTxt').innerHTML = `Target gains: <b>Kp = ${fmt(g.Kp)}, Ki = ${fmt(g.Ki)}, Kd = ${fmt(g.Kd)}</b>`; });
+
+/* ============================ SYSTEM VIEW (animated servo rig) ============================ */
+const SV = {active:false, playing:true, t:0, speed:1, last:null, raf:null, hist:[], gear:32, ppr:200, supply:12, Rm:6, noRestart:false, stage:0};
+const cvSys = $('cvSys'), sctx = cvSys.getContext('2d');
+const SVW = 1000, SVH = 520;
+function svSize(){ const r = cvSys.getBoundingClientRect(); const w = Math.max(300, r.width); cvSys.style.height = (w*SVH/SVW) + 'px'; }
+new ResizeObserver(() => { svSize(); svDraw(); }).observe(cvSys);
+function svData(){ return S.cur ? S.cur.disp : null; }
+function svIdx(t){ const d = svData(); return Math.max(0, Math.min(d.n - 1, Math.round(t/d.dt))); }
+function svLastFinite(arr, i){ while (i > 0 && !isFinite(arr[i])) i--; return i; }
+function svRestart(){ SV.t = 0; SV.hist = []; SV.playing = true; $('sysPlay').textContent = 'Pause'; svKick(); }
+function svKick(){ if (!SV.active || SV.raf) return; SV.last = null; SV.raf = requestAnimationFrame(svLoop); }
+function svLoop(ts){
+  SV.raf = null; if (!SV.active) return;
+  if (SV.last !== null && SV.playing){
+    SV.t += (ts - SV.last)/1000*SV.speed;
+    if (SV.t >= S.opt.T){ SV.t = S.opt.T; SV.playing = false; $('sysPlay').textContent = 'Play'; }
+  }
+  SV.last = ts;
+  svDraw(ts);
+  if (document.activeElement !== $('sysScrub')) $('sysScrub').value = Math.round(SV.t/S.opt.T*1000);
+  SV.raf = requestAnimationFrame(svLoop);
+}
+function svOnData(){
+  svMetrics(); svHint(); gainsSys.refresh(); svSyncOptions();
+  if (SV.noRestart){ SV.noRestart = false; svDraw(); return; }
+  if (!S.interacting) svRestart(); else svDraw();
+}
+function svHint(){
+  const h = $('sysPlantHint');
+  if (S.plantKey === 'servoPos'){ h.classList.add('hidden'); return; }
+  h.classList.remove('hidden');
+  h.innerHTML = `The arm is showing the output of <b>${PLANTS[S.plantKey].name}</b>. For a real servo arm, use the motor position model. <button class="small" id="sysUseServo">Use DC servo position plant</button>`;
+  $('sysUseServo').addEventListener('click', () => { $('plantSel').value = 'servoPos'; setPlant('servoPos'); });
+}
+function svMetrics(){
+  const c = S.cur; if (!c) return;
+  const th = +$('sysSet').value || 90, m = c.m;
+  const ts = m.notSettled ? `> ${fmt(S.opt.T)} s` : (isFinite(m.ts) ? fmt(m.ts) + ' s' : '–');
+  const over = isFinite(m.os) && isFinite(m.yss) ? m.os/100*m.yss*th : NaN;
+  const cards = [
+    {k:'Overshoot', v:isFinite(over) ? fmt(over, 3) + '°' : '–', d:isFinite(m.os) ? fmt(m.os) + ' % of the move' : ''},
+    {k:'Rise time', v:isFinite(m.tr) ? fmt(m.tr) + ' s' : '–', d:'10 % → 90 % of the move'},
+    {k:'Settling time', v:ts, d:'within ±2 %'},
+    {k:'Final angle', v:isFinite(m.yss) ? fmt(m.yss*th, 4) + '°' : '–', d:isFinite(m.ess) ? 'error ' + fmt(Math.abs(m.ess) < 1e-10 ? 0 : m.ess*th, 3) + '°' : ''},
+    {k:'Peak motor voltage', v:isFinite(m.upeak) ? fmt(m.upeak, 3) + ' V' : '–', d:!isFinite(m.upeak) ? '' : m.upeak > SV.supply ? `<span class="up-bad">above the ${SV.supply} V supply</span>` : '<span class="neutral">within supply</span>'},
+    {k:'Stability', v:`<span class="status ${c.an.stable ? 'good' : (c.an.marginal ? 'warn' : 'bad')}">${c.an.stable ? 'stable' : (c.an.marginal ? 'marginal' : 'unstable')}</span>`, d:''},
+  ];
+  $('sysMetrics').innerHTML = cards.map(q => `<div class="metric"><div class="k">${q.k}</div><div class="v">${q.v}</div><div class="dl">${q.d}</div></div>`).join('');
+}
+
+/* ---- drawing helpers ---- */
+function rr(x, y, w, h, r){ const c = sctx; c.beginPath(); c.moveTo(x + r, y); c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r); c.lineTo(x + w, y + h - r); c.quadraticCurveTo(x + w, y + h, x + w - r, y + h); c.lineTo(x + r, y + h); c.quadraticCurveTo(x, y + h, x, y + h - r); c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y); c.closePath(); }
+function box(x, y, w, h, title, col){
+  const c = sctx; rr(x, y, w, h, 10); c.fillStyle = css('--panel2'); c.fill(); c.lineWidth = 1.5; c.strokeStyle = col || css('--border'); c.stroke();
+  if (title){ c.fillStyle = css('--text'); c.font = '600 13px system-ui, sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText(title, x + 10, y + 8); }
+}
+function txt(s, x, y, o = {}){ const c = sctx; c.font = `${o.w || 400} ${o.size || 12}px ${o.mono ? 'ui-monospace, Consolas, monospace' : 'system-ui, sans-serif'}`; c.fillStyle = o.color || css('--text'); c.textAlign = o.align || 'left'; c.textBaseline = o.base || 'middle'; c.fillText(s, x, y); }
+function wire(pts, color, flow, label, now){
+  const c = sctx; c.strokeStyle = color; c.lineWidth = 2.5; c.globalAlpha = 0.55; c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]); c.stroke(); c.globalAlpha = 1;
+  // moving dots: spacing 22 px, speed proportional to |flow|
+  const segs = []; let L = 0;
+  for (let i = 1; i < pts.length; i++){ const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); segs.push([pts[i - 1], pts[i], L, l]); L += l; }
+  const sp = 22, f = Math.max(0, Math.min(1, Math.abs(flow)));
+  if (f > 0.01){
+    const off = ((now || 0)/1000*(30 + 170*f)) % sp;
+    c.fillStyle = color;
+    for (let d = off; d < L; d += sp){
+      const sg = segs.find(s => d >= s[2] && d <= s[2] + s[3]); if (!sg) continue;
+      const k = (d - sg[2])/sg[3], x = sg[0][0] + k*(sg[1][0] - sg[0][0]), y = sg[0][1] + k*(sg[1][1] - sg[0][1]);
+      c.beginPath(); c.arc(x, y, 2.2 + 1.8*f, 0, Math.PI*2); c.fill();
+    }
+  }
+  if (label){ const m = pts[Math.floor((pts.length - 1)/2)], n = pts[Math.floor((pts.length - 1)/2) + 1] || m;
+    txt(label, (m[0] + n[0])/2, (m[1] + n[1])/2 - 9, {size:11, color, align:'center', w:600}); }
+}
+function gear(cx, cy, r, teeth, ang, col){
+  const c = sctx; c.save(); c.translate(cx, cy); c.rotate(-ang); c.fillStyle = col; c.beginPath();
+  for (let i = 0; i < teeth*2; i++){ const a = i*Math.PI/teeth, rad = i % 2 ? r : r*0.82; c.lineTo(rad*Math.cos(a), rad*Math.sin(a)); }
+  c.closePath(); c.fill(); c.fillStyle = css('--panel2'); c.beginPath(); c.arc(0, 0, r*0.3, 0, Math.PI*2); c.fill(); c.restore();
+}
+
+/* ---- main draw ---- */
+function svDraw(now){
+  const d = svData(); if (!d || !SV.active) return;
+  now = now || performance.now();
+  const rect = cvSys.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, s = rect.width/SVW;
+  cvSys.width = Math.round(rect.width*dpr); cvSys.height = Math.round(rect.width*SVH/SVW*dpr);
+  const c = sctx; c.setTransform(dpr*s, 0, 0, dpr*s, 0, 0); c.clearRect(0, 0, SVW, SVH);
+  const th = +$('sysSet').value || 90;
+  let i = svIdx(SV.t); const fin = svLastFinite(d.y, i); const diverged = fin < i; i = fin;
+  const y = d.y[i], r = d.r[i], u = d.u[i], e = d.e[i], P = d.P[i], I = d.I[i], D = d.D[i];
+  const i0 = Math.max(0, i - 2), i1 = Math.min(d.n - 1, i + 2), dydt = (d.y[i1] - d.y[i0])/((i1 - i0)*d.dt || 1);
+  let theta = y*th, thetaR = r*th;
+  const stop = theta > 200 || theta < -20; theta = Math.max(-20, Math.min(200, theta));
+  const armRpm = dydt*th/6, motAng = theta*SV.gear, motRpm = armRpm*SV.gear;
+  const counts = Math.round(motAng/360*SV.ppr);
+  const vApplied = Math.max(-SV.supply, Math.min(SV.supply, u));
+  const satWanted = Math.abs(u) > SV.supply + 1e-9;
+  const duty = Math.min(1, Math.abs(vApplied)/SV.supply);
+  const amps = Math.abs(vApplied - 0.02*motRpm)/SV.Rm;  // illustrative: back-emf reduces current
+  const cAcc = css('--accent'), cRef = css('--ref'), cErr = css('--err'), cU = css('--u'), cP = css('--p'), cI = css('--i'), cD = css('--d'), cMut = css('--muted'), cBad = css('--bad'), cGood = css('--good');
+
+  // ---------- power supply ----------
+  box(330, 20, 190, 105, 'Power supply', css('--warn'));
+  txt(`${SV.supply} V DC`, 345, 52, {size:18, w:700});
+  txt('current', 345, 78, {size:11, color:cMut}); rr(398, 72, 110, 12, 6); c.fillStyle = css('--panel'); c.fill(); c.strokeStyle = css('--border'); c.stroke();
+  const ampF = Math.min(1, amps/2.5); rr(398, 72, Math.max(6, 110*ampF), 12, 6); c.fillStyle = ampF > 0.8 ? cBad : css('--warn'); c.fill();
+  txt(`≈ ${fmt(Math.min(amps, 9.99), 2)} A`, 345, 104, {size:12, mono:true});
+
+  // ---------- microcontroller ----------
+  box(20, 30, 285, 460, 'Microcontroller: PID loop', cAcc);
+  const stages = ['read encoder', 'e = r − y', 'PID', 'write PWM'];
+  SV.stage = Math.floor(now/250) % 4;
+  stages.forEach((st, k) => { const x = 28 + k*68; rr(x, 60, 66, 24, 6); c.fillStyle = k === SV.stage ? cAcc : css('--panel'); c.fill(); c.strokeStyle = css('--border'); c.stroke();
+    txt(st, x + 33, 72, {size:10, align:'center', color:k === SV.stage ? '#fff' : cMut, w:600}); });
+  txt('the loop repeats every sample (e.g. 1 ms)', 162, 98, {size:10, align:'center', color:cMut});
+  const rows = [
+    ['Setpoint r', `${fmt(thetaR, 4)}°`, cRef],
+    ['Angle y', `${fmt(theta, 4)}°`, cAcc],
+    ['Error e = r − y', `${fmt(e*th, 3)}°`, cErr],
+    ['P = Kp·e', (P >= 0 ? '+' : '') + fmt(P, 3), cP],
+    ['I = Ki·∫e dt', (I >= 0 ? '+' : '') + fmt(I, 3), cI],
+    ['D = Kd·de/dt', (D >= 0 ? '+' : '') + fmt(D, 3), cD],
+    ['u = P + I + D', `${(u >= 0 ? '+' : '') + fmt(u, 3)} V`, cU],
+    ['PWM duty', `${Math.round(duty*100)} %  ${vApplied > 0.01 ? '▶ forward' : vApplied < -0.01 ? '◀ reverse' : '■ stop'}`, cU],
+    ['Encoder count', `${counts}`, cMut],
+  ];
+  rows.forEach((rw, k) => { const yy = 128 + k*31; txt(rw[0], 32, yy, {size:12, color:cMut}); txt(rw[1], 292, yy, {size:13, mono:true, align:'right', color:rw[2], w:600}); });
+  // P/I/D contribution bars
+  const tot = Math.abs(P) + Math.abs(I) + Math.abs(D) || 1; let bx = 32;
+  [[P, cP], [I, cI], [D, cD]].forEach(([v, col]) => { const w = 260*Math.abs(v)/tot; if (w > 0.5){ c.fillStyle = col; c.fillRect(bx, 410, w, 12); bx += w; } });
+  txt('share of u from P, I and D', 32, 434, {size:10, color:cMut});
+  txt('u = Kp·e + Ki·∫e dt + Kd·de/dt', 162, 474, {size:12, align:'center', mono:true, color:cMut});
+  if (satWanted){ txt(S.opt.satOn ? 'PWM at 100 %: output saturated' : `u asks for ${fmt(Math.abs(u), 3)} V but supply is ${SV.supply} V`, 162, 452, {size:11, align:'center', color:cBad, w:700}); }
+  txt(`t = ${SV.t.toFixed(2)} s`, 292, 43, {size:11, align:'right', color:cMut, mono:true});
+
+  // ---------- motor driver ----------
+  box(330, 240, 175, 125, 'Motor driver (H-bridge)', cU);
+  // PWM waveform
+  c.strokeStyle = cU; c.lineWidth = 2; c.beginPath();
+  const per = 22, x0 = 342, y0 = 300, hgt = 22, sh = SV.playing ? (now/40) % per : 0;
+  for (let x = 0; x < 150; x += per){ const xs = x0 + x - sh, hi = per*duty;
+    c.moveTo(Math.max(x0, xs), y0); if (xs >= x0) c.lineTo(xs, y0 - hgt); else c.moveTo(x0, y0 - hgt);
+    c.lineTo(Math.min(x0 + 150, xs + hi), y0 - hgt); c.lineTo(Math.min(x0 + 150, xs + hi), y0); c.lineTo(Math.min(x0 + 150, xs + per), y0); }
+  c.stroke();
+  txt(`duty ${Math.round(duty*100)} %`, 342, 322, {size:12, mono:true, color:cU, w:600});
+  txt(`${fmt(vApplied, 3)} V to motor`, 342, 342, {size:12, mono:true});
+  txt(vApplied > 0.01 ? '⟳' : vApplied < -0.01 ? '⟲' : '·', 488, 330, {size:22, align:'center', color:cU});
+
+  // ---------- encoder A/B strip ----------
+  box(330, 385, 175, 80, 'Encoder A / B', cMut);
+  const ph = motAng/360*SV.ppr*2*Math.PI;
+  if (SV.playing){ SV.hist.push([Math.sin(ph) >= 0, Math.cos(ph) >= 0]); if (SV.hist.length > 75) SV.hist.shift(); }
+  [[0, 'A', cGood], [1, 'B', cAcc]].forEach(([k, lab, col]) => { const yb = 425 + k*24; txt(lab, 340, yb - 6, {size:11, color:col, w:700});
+    c.strokeStyle = col; c.lineWidth = 1.5; c.beginPath(); SV.hist.forEach((h, j) => { const x = 355 + j*2, yy = yb - (h[k] ? 12 : 0); if (j === 0) c.moveTo(x, yy); else c.lineTo(x, yy); }); c.stroke(); });
+
+  // ---------- encoder disc + motor + gearbox ----------
+  const ex = 575, ey = 360;
+  c.save(); c.translate(ex, ey); c.rotate(-motAng*Math.PI/180);
+  c.fillStyle = css('--panel'); c.strokeStyle = css('--axis'); c.lineWidth = 1.5; c.beginPath(); c.arc(0, 0, 36, 0, Math.PI*2); c.fill(); c.stroke();
+  c.fillStyle = css('--text'); for (let k = 0; k < 20; k++){ c.save(); c.rotate(k*Math.PI/10); c.fillRect(26, -2, 8, 4); c.restore(); }
+  c.restore();
+  // optical fork sensor
+  c.fillStyle = css('--axis'); c.fillRect(565, 310, 20, 16); txt('optical sensor', 575, 300, {size:10, align:'center', color:cMut});
+  const led = Math.sin(ph) >= 0; c.fillStyle = led ? cGood : css('--grid'); c.beginPath(); c.arc(575, 318, 4, 0, Math.PI*2); c.fill();
+  txt('encoder disc', ex, 410, {size:11, align:'center', color:cMut});
+  // motor body
+  rr(612, 330, 140, 60, 8); c.fillStyle = css('--axis'); c.fill();
+  for (let k = 0; k < 6; k++){ c.fillStyle = css('--panel2'); c.globalAlpha = 0.35; c.fillRect(625 + k*20, 334, 8, 52); } c.globalAlpha = 1;
+  txt('DC motor', 682, 360, {size:13, align:'center', color:'#fff', w:700});
+  c.strokeStyle = css('--axis'); c.lineWidth = 6; c.beginPath(); c.moveTo(ex, ey); c.lineTo(612, ey); c.stroke();
+  txt(`motor ${Math.round(motRpm)} rpm`, 682, 405, {size:11, align:'center', mono:true, color:cMut});
+  // gearbox
+  box(758, 322, 64, 76, '', css('--axis')); txt(`gearbox ${SV.gear}:1`, 790, 412, {size:11, align:'center', color:cMut, w:600});
+  gear(776, 345, 11, 8, motAng*Math.PI/180, css('--muted'));
+  gear(798, 365, 18, 14, theta*Math.PI/180, css('--axis'));
+  c.strokeStyle = css('--axis'); c.lineWidth = 6; c.beginPath(); c.moveTo(822, 360); c.lineTo(845, 360); c.lineTo(845, 348); c.lineTo(868, 348); c.stroke();
+
+  // ---------- arm and protractor ----------
+  const px = 868, py = 348, L = 88;
+  const ca = deg => -(deg - 90)*Math.PI/180;              // canvas angle: 0 deg = down, 90 deg = right, 180 deg = up
+  const AP = (deg, rad) => [px + rad*Math.cos(ca(deg)), py + rad*Math.sin(ca(deg))];
+  c.strokeStyle = css('--grid'); c.lineWidth = 1; c.beginPath(); c.arc(px, py, L + 14, ca(180), ca(0)); c.stroke();
+  for (let a = 0; a <= 180; a += 15){ const [x1, y1] = AP(a, L + 10), [x2, y2] = AP(a, a % 30 ? L + 15 : L + 19);
+    c.strokeStyle = css('--axis'); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    if (a % 30 === 0){ const [lx, ly] = AP(a, L + 30); txt(a + '°', lx, ly, {size:10, align:'center', color:cMut}); } }
+  // end stops at -20 and 200 deg
+  c.fillStyle = cBad; c.globalAlpha = 0.6; [-20, 200].forEach(a => { const [x, y] = AP(a, L + 12); c.beginPath(); c.arc(x, y, 5, 0, Math.PI*2); c.fill(); }); c.globalAlpha = 1;
+  // error wedge between arm and setpoint
+  const aR = ca(thetaR), aA = ca(theta);
+  c.fillStyle = cErr; c.globalAlpha = 0.2; c.beginPath(); c.moveTo(px, py); c.arc(px, py, L*0.75, Math.min(aR, aA), Math.max(aR, aA)); c.closePath(); c.fill(); c.globalAlpha = 1;
+  // setpoint ghost arm
+  const [sx, sy] = AP(thetaR, L);
+  c.setLineDash([7, 5]); c.strokeStyle = cRef; c.lineWidth = 3; c.globalAlpha = 0.75; c.beginPath(); c.moveTo(px, py); c.lineTo(sx, sy); c.stroke(); c.setLineDash([]); c.globalAlpha = 1;
+  const [stx, sty] = AP(thetaR, L + 6); txt('setpoint', Math.min(stx, 970), sty - 12, {size:10, color:cRef, align:'center'});
+  // actual arm with a mass on the end
+  c.save(); c.translate(px, py); c.rotate(aA);
+  rr(-12, -8, L + 16, 16, 8); c.fillStyle = stop ? cBad : cAcc; c.fill();
+  c.fillStyle = css('--text'); c.beginPath(); c.arc(L, 0, 9, 0, Math.PI*2); c.fill();
+  c.restore();
+  c.fillStyle = css('--text'); c.beginPath(); c.arc(px, py, 7, 0, Math.PI*2); c.fill();
+  txt(`θ = ${fmt(theta, 4)}°`, 790, 455, {size:15, align:'center', w:700, color:cAcc});
+  txt(`arm ${fmt(Math.abs(armRpm) < 0.01 ? 0 : armRpm, 3)} rpm`, 790, 474, {size:11, align:'center', mono:true, color:cMut});
+  if (S.opt.distAmp && SV.t >= S.opt.distT){ const [lx, ly] = AP(theta, L); txt('⬇ load', lx, ly + 22, {size:12, align:'center', color:css('--warn'), w:700}); }
+  if (stop || diverged){ rr(690, 462, 300, 34, 8); c.fillStyle = cBad; c.globalAlpha = 0.15; c.fill(); c.globalAlpha = 1;
+    txt(diverged ? 'UNSTABLE: the arm swings to the end stops' : 'Arm hit the end stop', 840, 479, {size:13, align:'center', color:cBad, w:700}); }
+
+  // ---------- live response plot ----------
+  const gx = 560, gy = 20, gw = 420, gh = 178;
+  box(gx, gy, gw, gh, 'Arm angle θ(t)', css('--border'));
+  const T = S.opt.T, pl = gx + 40, pr = gx + gw - 12, pt = gy + 32, pb = gy + gh - 24;
+  let ymin = Math.min(0, ...S.cur.sel.y.filter(isFinite).map(v => v*th)), ymax = Math.max(th*1.1, ...S.cur.sel.y.filter(isFinite).map(v => v*th));
+  ymin = Math.max(ymin, -th*1.2); ymax = Math.min(ymax, th*2.4);
+  const X = v => pl + v/T*(pr - pl), Y = v => pb - (v - ymin)/(ymax - ymin)*(pb - pt);
+  c.strokeStyle = css('--grid'); c.lineWidth = 1;
+  [0, th].forEach(v => { if (v >= ymin && v <= ymax){ c.beginPath(); c.moveTo(pl, Y(v)); c.lineTo(pr, Y(v)); c.stroke(); txt(fmt(v) + '°', pl - 5, Y(v), {size:10, align:'right', color:cMut}); } });
+  txt('0', pl, pb + 10, {size:10, align:'center', color:cMut}); txt(fmt(T) + ' s', pr, pb + 10, {size:10, align:'right', color:cMut});
+  c.save(); c.beginPath(); c.rect(pl, pt - 2, pr - pl, pb - pt + 4); c.clip();
+  const rs = decimate(d.t, d.r, 400); c.setLineDash([4, 4]); c.strokeStyle = cRef; c.lineWidth = 1.2; c.beginPath(); rs.x.forEach((tt, k) => { const yy = Y(rs.y[k]*th); if (k) c.lineTo(X(tt), yy); else c.moveTo(X(tt), yy); }); c.stroke(); c.setLineDash([]);
+  if (S.before && S.before.sel && $('ghostOn').checked){ c.strokeStyle = css('--ghost'); c.setLineDash([6, 4]); c.lineWidth = 1.5; c.beginPath(); let pen = false;
+    S.before.sel.x.forEach((tt, k) => { const v = S.before.sel.y[k]; if (!isFinite(v)){ pen = false; return; } const yy = Y(v*th); if (pen) c.lineTo(X(tt), yy); else { c.moveTo(X(tt), yy); pen = true; } }); c.stroke(); c.setLineDash([]); }
+  c.strokeStyle = cAcc; c.lineWidth = 2.2; c.beginPath(); let pen = false;
+  S.cur.sel.x.forEach((tt, k) => { if (tt > SV.t) return; const v = S.cur.sel.y[k]; if (!isFinite(v)){ pen = false; return; } const yy = Y(v*th); if (pen) c.lineTo(X(tt), yy); else { c.moveTo(X(tt), yy); pen = true; } });
+  c.stroke();
+  c.globalAlpha = 0.25; c.beginPath(); pen = false;
+  S.cur.sel.x.forEach((tt, k) => { if (tt < SV.t) return; const v = S.cur.sel.y[k]; if (!isFinite(v)) return; const yy = Y(v*th); if (pen) c.lineTo(X(tt), yy); else { c.moveTo(X(tt), yy); pen = true; } });
+  c.stroke(); c.globalAlpha = 1; c.restore();
+  c.strokeStyle = cMut; c.setLineDash([2, 3]); c.beginPath(); c.moveTo(X(SV.t), pt); c.lineTo(X(SV.t), pb); c.stroke(); c.setLineDash([]);
+  c.fillStyle = cAcc; c.beginPath(); c.arc(X(SV.t), Y(theta), 4, 0, Math.PI*2); c.fill();
+
+  // ---------- wires with signal flow ----------
+  const tNow = SV.playing ? now : (SV.frozen || (SV.frozen = now));
+  if (SV.playing) SV.frozen = null;
+  wire([[425, 125], [425, 240]], css('--warn'), 0.25 + 0.75*Math.min(1, amps/2.5), '12 V', tNow);
+  wire([[305, 300], [330, 300]], cU, duty, '', tNow);
+  wire([[505, 270], [660, 270], [660, 330]], cU, duty, 'motor voltage', tNow);
+  wire([[575, 396], [575, 505], [160, 505], [160, 490]], cGood, Math.min(1, Math.abs(motRpm)/600 + 0.05), 'encoder pulses (feedback)', tNow);
+  // labels for the loop
+  txt('Closed loop: setpoint → controller → driver → motor → arm, measured by the encoder and fed back', 20, 12, {size:11, color:cMut});
+}
+
+/* ---- controls ---- */
+const gainsSys = GainControls($('gainsSystem'), S.g, {
+  toggles:false,
+  onInput:(k, v) => { beginChange(k, S.g[k]); S.g[k] = v; schedule(); },
+  onChange:() => { endChange(); svRestart(); },
+});
+$('sysPlay').addEventListener('click', () => { if (!SV.playing && SV.t >= S.opt.T - 1e-6) SV.t = 0; SV.playing = !SV.playing; $('sysPlay').textContent = SV.playing ? 'Pause' : 'Play'; svKick(); });
+$('sysReplay').addEventListener('click', () => svRestart());
+$('sysSpeed').addEventListener('change', () => { SV.speed = +$('sysSpeed').value; });
+$('sysScrub').addEventListener('input', () => { SV.t = +$('sysScrub').value/1000*S.opt.T; SV.playing = false; $('sysPlay').textContent = 'Play'; SV.hist = []; svDraw(); });
+$('sysSet').addEventListener('change', () => { const v = Math.max(5, Math.min(170, +$('sysSet').value || 90)); $('sysSet').value = v; svMetrics(); svRestart(); });
+function svSyncOptions(){
+  $('satOn').checked = S.opt.satOn; $('umaxIn').value = S.opt.umax; $('noiseIn').value = S.opt.noise; $('distIn').value = S.opt.distAmp; $('distT').value = S.opt.distT;
+  $('sysLimit').textContent = S.opt.satOn ? 'Remove ±12 V limit' : 'Use real ±12 V limit';
+  $('sysNoise').textContent = S.opt.noise ? 'Remove encoder noise' : 'Add encoder noise';
+  $('sysLoad').textContent = S.opt.distAmp ? 'Remove load' : 'Add load on arm';
+}
+$('sysLimit').addEventListener('click', () => { optChange('actuator limit', () => { S.opt.satOn = !S.opt.satOn; S.opt.umax = SV.supply; }); svSyncOptions(); });
+$('sysNoise').addEventListener('click', () => { optChange('sensor noise', () => { S.opt.noise = S.opt.noise ? 0 : 1; }); svSyncOptions(); });
+$('sysLoad').addEventListener('click', () => {
+  if (S.opt.distAmp){ S.opt.distAmp = 0; }
+  else { S.opt.distAmp = -0.5; S.opt.distT = Math.round(Math.min(SV.t, S.opt.T*0.9)*100)/100 || Math.round(S.opt.T/2*10)/10; }
+  SV.noRestart = SV.t > 0.05; compute(); svSyncOptions();
+  if (SV.noRestart === false && SV.t <= 0.05) svRestart(); else { SV.playing = true; $('sysPlay').textContent = 'Pause'; svKick(); }
+});
+
+
+/* ---------- start ---------- */
+$('plantSel').value = 'lab'; $('chPlant').value = 'lab';
+setPlant('lab');
+</script>
+</body>
+</html>
